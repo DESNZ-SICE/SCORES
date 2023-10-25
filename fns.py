@@ -13,11 +13,15 @@ def offset(x):
         
         
 def get_filename(sites,code,year_min,year_max,months):
+    """This creates a filename for the run, based on the sites used, the time period and the generation type"""
     mnths = {1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'May',6:'Jun',
              7:'Jul',8:'Aug',9:'Sep',10:'Oct',11:'Nov',12:'Dec'}
     fn = code+'_'
-    if sites == 'all' or sites[:2] == 'lf':
-        fn +=sites
+    if len(sites)==1:
+        # if sites == ['all'] or sites[0][:2] == 'lf': 
+        #this has been commented out as I dont know what it does (matt ) ^^
+        if sites == ['all']:
+            fn +=sites[0]
     else:
         return ''
     fn += '_'+str(year_min)+'to'+str(year_max)
@@ -87,8 +91,11 @@ def read_analysis_from_file(filename):
 
     return res
 
+#old arguments
+# def get_GB_demand(year_min,year_max,months,elec_demand=267.5134,heat_demand=0, # demands in each sector can optionally be defined in TWh/yr. Demand profile will then be scaled accordingly
+#                   ev_demand=0, units='MW'):
 
-def get_GB_demand(year_min,year_max,months,elec_demand=267.5134,heat_demand=0, # demands in each sector can optionally be defined in TWh/yr. Demand profile will then be scaled accordingly
+def get_GB_demand(year_min,year_max,months,elec_scaler=1,heat_demand=0, # demands in each sector can optionally be defined in TWh/yr. Demand profile will then be scaled accordingly
                   ev_demand=0, units='MW'):
     '''
     Gets the hourly GB electricity demand from the specified time range
@@ -100,9 +107,8 @@ def get_GB_demand(year_min,year_max,months,elec_demand=267.5134,heat_demand=0, #
           'SEP':9,'OCT':10,'NOV':11,'DEC':12,'Jan':1,'Feb':2,'Mar':3,'Apr':4,
           'May':5,'Jun':6,'Jul':7,'Aug':8,'Sep':9,'Oct':10,'Nov':11,'Dec':12}
     demand = []
-    
-    elec_scaler = elec_demand / 267.5134     #these values are the *2019* annual TWh demands in the data file
-    ev_scaler = ev_demand / 52.5628     
+
+    ev_scaler = ev_demand / 52.5628    #peculiar scaling values
     heat_scaler = heat_demand / 826.638
 
     if ev_demand > 0:
@@ -120,7 +126,7 @@ def get_GB_demand(year_min,year_max,months,elec_demand=267.5134,heat_demand=0, #
         reader = csv.reader(csvfile)
         next(reader)
         for row in reader:
-            dt = datetime.datetime(int(row[0][7:]),ms[row[0][3:6]],
+            dt = datetime.datetime(2000+int(row[0][7:]),ms[row[0][3:6]],
                                    int(row[0][:2]))
             if dt < d:
                 continue

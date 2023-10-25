@@ -39,7 +39,7 @@ class ElectricitySystem:
         == parameters ==
         gen_list: (Array<GenerationModel>) a list containing generator objects
         stor_list: (Array<StorageModel>)
-        aggEV_list: (MultipleAggregatedEVs) class of multiple agg EV fleets from teh aggEVs class, default arg is an empty set
+        aggEV_list: (MultipleAggregatedEVs) class of multiple agg EV fleets from the aggEVs class, default arg is an empty set
         demand: (Array<float)>) the demand in MW
         t_res: (float) the length of one demand time step in hours
         reliability: (float) The percentage of demand that will be met
@@ -94,7 +94,7 @@ class ElectricitySystem:
         (float) cost in GBP/year of newly scaled generation
         
         '''
-        print(gen_cap)
+        print(f"generation cap:{gen_cap}")
         total = 0.0
         self.total_installed_generation = 0
         for i in range(len(self.gen_list)):
@@ -140,8 +140,8 @@ class ElectricitySystem:
         for t in range(self.len):
             for gen in self.gen_list:
                 self.surplus[t] += gen.power_out_scaled[t]
-            self.surplus[t] -= self.demand[t]
-        
+            self.surplus[t] -= self.demand[t]    
+
     def get_reliability(self, start_up_time=0, return_output=False, return_soc=False,
                         strategy='ordered'):
         '''
@@ -169,11 +169,34 @@ class ElectricitySystem:
                                           strategy=strategy)
         return rel
 
+    def get_cost(self, verbose=1):
+        '''
+        == description ==
+        Calculates the total system cost for a given set of generation and
+        relative storage sizes. 
+        == parameters ==
+        verbose (int): if >0, prints out the cost as well as returning it 
+
+        == returns ==
+        (float) total system cost £bn /year
+        '''                 
+        generatorcost=sum([i.get_cost() for i in self.gen_list])
+        storagecost=sum([i.get_cost() for i in self.stor_list])
+        totalcost=generatorcost+storagecost
+        if verbose>0:
+            print(f"Generation cost: £{round(generatorcost/(10**9), 4)} billion /year")
+            print(f"Storage cost: £{round(storagecost/(10**9), 4)} billion /year")
+            print(f"Total cost: £{round(totalcost/(10**9), 4)} billion /year")
+            
+        return totalcost/10**9
+
+
     def cost(self, x, preoptimised = False): 
         '''
         == description ==
         Calculates the total system cost for a given set of generation and
-        relative storage sizes.
+        relative storage sizes.  The storage size is adjusted to meet the reliability
+        constraints
 
         == parameters ==
         x: (Array<float>) the first n_gen elements contain the installed
@@ -187,14 +210,14 @@ class ElectricitySystem:
         == returns ==
         (float) total system cost £bn /year
         '''                 
+
         gen_cap = x[:len(self.gen_list)]
         stor_cap = list(x[len(self.gen_list):])
         stor_cap.append(1-sum(stor_cap))
-        
         total =  self.scale_generation(gen_cap)
         self.storage.rel_capacity = stor_cap
-        
         self.update_surplus()
+        print(f"Reliability: {self.reliability}")
         sc = self.storage.size_storage(self.surplus, self.reliability,
                                        start_up_time=self.start_up_time,
                                        strategy=self.strategy)
@@ -245,13 +268,12 @@ class ElectricitySystem:
         f.write('STORAGE UTILISATION\n')
         f.write('--------------------\n\n')
         use = self.storage.analyse_usage()
-        
-        n_years = self.storage.units[0].n_years
+        n_years = self.storage.units[0].n_years #seems like the numbers are being divided by years twice
         curt = use[2]/n_years
         for i in range(self.n_storage):
             f.write('>> '+self.storage.units[i].name+' <<\n\n')
             f.write(str(use[0][i]/n_years*1e-6)+ ' TWh/yr in (grid side)\n')
-            f.write(str(use[1][i]/self.storage.units[i].n_years*1e-6)
+            f.write(str(use[1][i]/n_years*1e-6)
                     +' TWh/yr out (grid side)\n')
             cycles = (use[1][i]*100/(self.storage.units[i].eff_out*n_years
                                      *self.storage.units[i].capacity))
@@ -263,11 +285,13 @@ class ElectricitySystem:
         f.write('Total Demand: '
                 + str((sum(self.demand)*1e-6)/(self.t_res*n_years))
                 + ' TWh/yr\n')
+        f.write('Met demand: '+ str())
         f.write('Total Supply: '
                 + str(((sum(self.surplus)+sum(self.demand))*1e-6)
                       /(self.t_res*n_years))
                 + ' TWh/yr\n') 
-        f.write('Curtailment: '+str(curt*1e-6)+' TWh/yr\n\n')
+        f.write('Curtailment: '+str(curt*1e-6)+' TWh/yr\n')
+        f.write('Efficiency losses: '+str(self.storage.units[i].efficencylosses*1e-6/n_years)+ ' TWh/yr\n')
 
         f.write('---------------\n')
         f.write('COST BREAKDOWN\n')
@@ -502,12 +526,11 @@ class ElectricitySystem:
                 stor_cap = []
             else:
                 stor_cap = [1.0/self.n_storage]*(self.n_storage-1)
-                
         x = lhs(len(self.gen_list),samples=number_test_points)
-
         best = None
         lwst = np.inf
         for i in range(number_test_points):
+            print(f"count:{i}")
             gen_cap = []
             violation = False
             # first re-scale to be within the limits
@@ -615,7 +638,7 @@ class ElectricitySystem:
         '''
         == description ==
         Searches for the lowest cost electricity system that meets the
-        specified reliability requirement. If an initial gset of generation
+        specified reliability requirement. If an initial set of generation
         capacities are not specified a lhs search is performed to find a good
         starting point
 
@@ -628,7 +651,7 @@ class ElectricitySystem:
             unit in GW
         max_gen_cap: (Array<float>) upper limits on the size of each generation
             unit in GW
-        analyse: (boo) Whether or not to store analysis of optimal system
+        analyse: (bool) Whether or not to store analysis of optimal system
         start_up_time: (int) number of first time intervals to be ignored when
             calculating the % of met demand (to allow for start up effects).
         strategy: (str) the strategy for operating the assets. Options:
@@ -917,14 +940,15 @@ class ElectricitySystemGB(ElectricitySystem):
 
     def __init__(self, gen_list, stor_list, year_min=2013, year_max=2019,
                  months=list(range(1,13)), reliability=99,strategy='ordered',
-                 start_up_time=30*24*3,electrify_heat=False,evs=False,aggEV_list = aggEV.MultipleAggregatedEVs([])):
+                 start_up_time=30*24*3,heat_demand=0, # demands in each sector can optionally be defined in TWh/yr. Demand profile will then be scaled accordingly
+                 ev_demand=0,aggEV_list = aggEV.MultipleAggregatedEVs([]), scaler=1):
 
         demand = get_GB_demand(year_min, year_max, months,
-                               electrify_heat=electrify_heat, evs=evs)
+                               heat_demand=0, # demands in each sector can optionally be defined in TWh/yr. Demand profile will then be scaled accordingly
+                               ev_demand=0, elec_scaler=scaler)
         super().__init__(gen_list, stor_list, demand, reliability=reliability,
                          start_up_time=start_up_time,aggEV_list=aggEV_list)
 
-        
 class DispatchableOutput(ElectricitySystem):
 
     def __init__(self, generator, storage):
@@ -1006,7 +1030,7 @@ class CostOptimisation(ElectricitySystem):
                  months=list(range(1,13))):
 
         if demand == 'GB':
-            demand = get_demand(year_min, year_max, months)
+            demand = get_GB_demand(year_min, year_max, months)
         super().__init__(gen_list, stor_list, demand)
 
         self.reliability = reliability

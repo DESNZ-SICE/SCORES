@@ -1,5 +1,5 @@
 """
-Created: 08/04/2020 by C.CROZIER
+Created: 08/04/2020 by C.CROZIER, updated by C Quarton and C O'Malley
 
 File description:
 """
@@ -46,6 +46,7 @@ class GenerationModel:
 
         self.date_map = {}
         n = 0
+
         # first get date range which fits within the bounds
         d = datetime.datetime(self.year_min, min(self.months), 1)
         while d.year <= self.year_max:
@@ -64,13 +65,17 @@ class GenerationModel:
         This function sets the parameter power_out_scaled to be a linearly
         scaled version of power_out, whose maximum value is the input parameter
 
+
         == parameters ==
         installed_capacity: (float) the installed generation capacity in MW?
 
         == returns ==
         None
         '''
+
+
         sf = installed_capacity/self.total_installed_capacity
+
         mp = max(self.n_good_points)
         for t in range(len(self.power_out)):
             # If no data is available forward fill
@@ -78,8 +83,9 @@ class GenerationModel:
                 self.power_out_scaled[t] = self.power_out_scaled[t-1]
                 continue
             # Otherwise scale by percentage of available data
-            self.power_out_scaled[t] = (self.power_out[t] * sf
-                                        * mp / self.n_good_points[t])
+            # self.power_out_scaled[t] = (self.power_out[t] * sf
+            #                             * mp / self.n_good_points[t])
+            self.power_out_scaled[t] =self.power_out[t] * sf
         self.scaled_installed_capacity = installed_capacity
 
         return np.array(self.power_out_scaled)
@@ -141,7 +147,7 @@ class GenerationModel:
         None
         '''
         # adjust for missing points
-        self.scale_output(self.total_installed_capacity)
+        # self.scale_output(self.total_installed_capacity)
         
         with open(path, 'w') as csvfile:
             writer = csv.writer(csvfile)
@@ -190,6 +196,8 @@ class GenerationModel:
         return (self.fixed_cost*self.scaled_installed_capacity
                 + (self.variable_cost*sum(self.power_out_scaled)
                    /(self.year_max+1-self.year_min)))
+    
+
 
     def get_diurnal_profile(self):
         p = [0.0]*24
@@ -202,7 +210,7 @@ class GenerationModel:
 class TidalStreamTurbineModel(GenerationModel):
     
 
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
                  months=list(range(1, 13)), fixed_cost=445400, variable_cost=0,
                  water_density=1027.0, rotor_diameter=20,
                  rated_water_speed=2.91, v_cut_in=0.88, Cp = 0.37,
@@ -273,7 +281,7 @@ class TidalStreamTurbineModel(GenerationModel):
 
         if self.data_path == '':
             raise Exception('model can not be run without a data path')
-        if self.sites == 'all':
+        if self.sites[0] == 'all':
             sites = []
             with open(self.data_path+'site_locs.csv','r') as csvfile:
                 reader = csv.reader(csvfile)
@@ -358,15 +366,23 @@ class TidalStreamTurbineModel(GenerationModel):
                     f = (speed % 0.1) / 0.1
                     self.power_out[dn * 24 + hr] += ((f*P[p2] + (1 - f)*P[p1])
                                                      *self.n_turbine[si])
-                    self.n_good_points[dn * 24 + hr] += 1
+                    # self.n_good_points[dn* 24 + hr] += 1
+                    #I believe this should be =1 not +=1 (Matt)
+                    self.n_good_points[dn* 24 + hr] = 1
+        #the power values have been generated for each point. However, points with missing data are
+        #still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
+        #this out. As we dont want to increase the capacity at this point, we just run scale_output with the
+        #currently installed capacity: the values should not
+        self.scale_output(self.total_installed_capacity)
 
 class OffshoreWindModel(GenerationModel):
 
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
-                 months=list(range(1, 13)), fixed_cost=240000, variable_cost=3,
-                 tilt=5, air_density=1.23, rotor_diameter=190,
-                 rated_rotor_rpm=10, rated_wind_speed=11.5, v_cut_in=4,
-                 v_cut_out=30, n_turbine=None, turbine_size=10, data_path='',
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)), fixed_cost=225618, variable_cost=3,
+                 tilt=5, air_density=1.23, rotor_diameter=164,
+                 rated_rotor_rpm=7, rated_wind_speed=11, v_cut_in=3,
+                 v_cut_out=25, n_turbine=None, turbine_size=9.5, data_path='',
+                 hub_height=122, data_height=150, alpha=0.143,        # this line added by CQ     
                  save_path='stored_model_runs/', save=True):
         '''
         == description ==
@@ -380,7 +396,7 @@ class OffshoreWindModel(GenerationModel):
         year_min: (int) earliest year in sumlation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
-        fixed_cost: (float) cost incurred per MW-year of installation in GBP
+        fixed_cost: (float) cost incurred per MW of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
         tilt: (float) blade tilt in degrees
         air_density: (float) density of air in kg/m3
@@ -410,8 +426,11 @@ class OffshoreWindModel(GenerationModel):
         self.v_cut_out = v_cut_out
         self.n_turbine = n_turbine
         self.turbine_size = turbine_size
+        self.hub_height = hub_height            # added by CQ
+        self.data_height = data_height          # added by CQ
+        self.alpha = alpha                      # added by CQ
         
-        file_name = get_filename(sites,'osw',year_min,year_max,months)
+        file_name = get_filename(sites,'osw_'+str(turbine_size),year_min,year_max,months)
         if file_name == '':
             save = False
 
@@ -419,6 +438,11 @@ class OffshoreWindModel(GenerationModel):
             self.run_model()
             if save is True:
                 self.save_run(self.save_path+file_name) 
+
+    def __str__(self):
+        return f"Offshore wind model\nNumber of Turbines:{sum(self.n_turbine)}\t Turbine Power:\
+{self.turbine_size} MW\nTotal power:{round(sum(self.n_turbine)*self.turbine_size)}Mw"
+    
 
     def run_model(self):
         '''
@@ -434,7 +458,7 @@ class OffshoreWindModel(GenerationModel):
 
         if self.data_path == '':
             raise Exception('model can not be run without a data path')
-        if self.sites == 'all':
+        if self.sites[0] == 'all':
             sites = []
             with open(self.data_path+'site_locs.csv','r') as csvfile:
                 reader = csv.reader(csvfile)
@@ -475,15 +499,16 @@ class OffshoreWindModel(GenerationModel):
         # create the power curve at intervals of 0.1
         v = np.arange(0, self.v_cut_out, 0.1)  # wind speeds (m/s)
         P = [0.0]*len(v)  # power output (MW)
-
-        # assume a fixed Cp - calculate this value using the turbine's rated wind speed and rated power
-        Cp = self.turbine_size*1e6/(0.5* self.air_density*area*np.power(self.rated_wind_speed, 3))
         
+         # assume a fixed Cp - calculate this value using the turbine's rated wind speed and rated power
+        Cp = self.turbine_size*1e6/(0.5* self.air_density*area*np.power(self.rated_wind_speed, 3))
+
         for i in range(len(v)):
             if v[i] < self.v_cut_in:
                 continue
 
-            P[i] = 0.5*Cp*self.air_density*area*np.power(v[i], 3)  # new power equation using fixed Cp
+            # P[i] = 0.5*c_p(tsr, b)* self.air_density*area*np.power(v[i], 3)
+            P[i] = 0.5*Cp*self.air_density*area*np.power(v[i], 3) 
             P[i] = P[i] / 1e6  # W to MW
 
             if P[i] > self.turbine_size:
@@ -509,6 +534,9 @@ class OffshoreWindModel(GenerationModel):
                     else:
                         continue
 
+                    # adjust wind speed to hub height (CQ addition - prevoiusly was only in onshore model)
+                    speed = speed*np.power(self.hub_height/self.data_height, self.alpha) 
+
                     # prevent overload
                     if speed > v[-1]:
                         speed = v[-1]
@@ -521,11 +549,18 @@ class OffshoreWindModel(GenerationModel):
                     f = (speed % 0.1) / 0.1
                     self.power_out[dn * 24 + hr] += ((f*P[p2] + (1 - f)*P[p1])
                                                      *self.n_turbine[si])
-                    self.n_good_points[dn * 24 + hr] += 1
-        
+                    # self.n_good_points[dn* 24 + hr] += 1
+                    #I believe this should be =1 not +=1 (Matt)
+                    self.n_good_points[dn* 24 + hr] = 1
+        #the power values have been generated for each point. However, points with missing data are
+        #still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
+        #this out. As we dont want to increase the capacity at this point, we just run scale_output with the
+        #currently installed capacity: the values should not
+        self.scale_output(self.total_installed_capacity)
+
 class SolarModel(GenerationModel):
 
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
                  months=list(range(1, 13)), fixed_cost=42000, variable_cost=0,
                  orient=0, tilt=22, efficiency=0.17, performance_ratio=0.85,
                  plant_capacity=1, area_factor=5.84, data_path='',
@@ -590,7 +625,7 @@ class SolarModel(GenerationModel):
 
         if self.data_path == '':
             raise Exception('model can not be run without a data path')
-        if self.sites == 'all':
+        if self.sites[0] == 'all':
             sites = []
             with open(self.data_path+'site_locs.csv','r') as csvfile:
                 reader = csv.reader(csvfile)
@@ -662,7 +697,9 @@ class SolarModel(GenerationModel):
                     try:
                         irradiation = float(row[2])/3.6 # kJ -> Wh
                         irradiation = irradiation/1.051 # merra2 overestimates
-                        self.n_good_points[dn*24+hr] += 1
+                        # self.n_good_points[dn* 24 + hr] += 1
+                        #I believe this should be =1 not +=1 (Matt)
+                        self.n_good_points[dn* 24 + hr] = 1
                     except:
                         continue
 
@@ -748,19 +785,24 @@ class SolarModel(GenerationModel):
             
             for t in range(len(site_power)):
                 self.power_out[t] += site_power[t]
-                
+        #the power values have been generated for each point. However, points with missing data are
+        #still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
+        #this out. As we dont want to increase the capacity at this point, we just run scale_output with the
+        #currently installed capacity: the values should not
+        self.scale_output(self.total_installed_capacity)
 
 class OnshoreWindModel(GenerationModel):
 
     # need to adjust the cost!
 
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
-                 months=list(range(1, 13)), fixed_cost=120000, variable_cost=6,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)), fixed_cost=115561, variable_cost=6,
                  tilt=5, air_density=1.23, rotor_diameter=120,
                  rated_rotor_rpm=13, rated_wind_speed=12.5, v_cut_in=3,
                  v_cut_out=25, n_turbine=None, turbine_size=3.6, hub_height=90,
                  data_path='', save_path='stored_model_runs/', save=True,
-                 data_height=100, alpha=0.143):         #this row added by CQ to calculate wind shear
+                 data_height=50, alpha=0.143,              #this row added by CQ to calculate wind shear 
+                 power_curve = None):                   # this added by CQ so that a power curve can optionally be imported
         '''
         == description ==
         Initialises an OnshoreWindModel object. Searches for a saved result at
@@ -788,9 +830,9 @@ class OnshoreWindModel(GenerationModel):
         data_path: (str) path to file containing raw data
         save_path: (str) path to file where output will be saved
         save: (boo) determines whether to save the results of the run
-        data_height: (float) height at which wind speed data applies
-        alpha: (float) wind shear coefficient
-
+        data_height: (float) height at which wind speed data applies   # added by CQ
+        alpha: (float) wind shear coefficient                          # added by CQ
+        power_curve: (Array<float>) optional power curve - power outputs that correspond to v array spaced at 0.1m/s
         == returns ==
         None
         '''
@@ -808,8 +850,9 @@ class OnshoreWindModel(GenerationModel):
         self.n_turbine = n_turbine
         self.turbine_size = turbine_size
         self.hub_height = hub_height
-        self.data_height = data_height          
-        self.alpha = alpha  
+        self.data_height = data_height          # added by CQ
+        self.alpha = alpha                      # added by CQ
+        self.power_curve = power_curve
 
         
         file_name = get_filename(sites,'w'+str(turbine_size),
@@ -822,6 +865,10 @@ class OnshoreWindModel(GenerationModel):
             if save is True:
                 self.save_run(self.save_path+file_name) 
 
+    def __str__(self):
+        return f"Onshore wind model\nNumber of Turbines:{sum(self.n_turbine)}\t Turbine Power:\
+            {self.turbine_size} MW\nTotal power:{round(sum(self.n_turbine)*self.turbine_size)}Mw"
+    
     def run_model(self):
         '''
         == description ==
@@ -836,7 +883,7 @@ class OnshoreWindModel(GenerationModel):
 
         if self.data_path == '':
             raise Exception('model can not be run without a data path')
-        if self.sites == 'all':
+        if self.sites[0] == 'all':
             sites = []
             with open(self.data_path+'site_locs.csv','r') as csvfile:
                 reader = csv.reader(csvfile)
@@ -867,30 +914,35 @@ class OnshoreWindModel(GenerationModel):
         if self.n_turbine is None:
             self.n_turbine = [1]*len(self.sites)
         self.total_installed_capacity = sum(self.n_turbine)*self.turbine_size
-                
+           
         # tip speed ratio
         tsr = (self.rated_rotor_rpm * self.rotor_diameter /
                (2 * 9.549 * self.rated_wind_speed))
         area = np.pi * self.rotor_diameter * self.rotor_diameter / 4
         b = self.tilt
-
+    
         # create the power curve at intervals of 0.1
         v = np.arange(0, self.v_cut_out, 0.1)  # wind speeds (m/s)
-        P = [0.0]*len(v)  # power output (MW)
-         
-        # assume a fixed Cp - calculate this value using the turbine's rated wind speed and rated power
-        Cp = self.turbine_size*1e6/(0.5* self.air_density*area*np.power(self.rated_wind_speed, 3))
-        
-        for i in range(len(v)):
-            if v[i] < self.v_cut_in:
-                continue
-
-            P[i] = 0.5*Cp*self.air_density*area*np.power(v[i], 3)  # new power equation using fixed Cp
-            P[i] = P[i] / 1e6  # W to MW
-
-            if P[i] > self.turbine_size:
-                P[i] = self.turbine_size
-                
+            
+        # CQ added two power_curve options: either calculate, or import
+        if self.power_curve is None:   
+            P = [0.0]*len(v)  # power output (MW)
+            
+            # the following is a CQ edit - new Cp calculation
+            Cp = self.turbine_size*1e6/(0.5* self.air_density*area*np.power(self.rated_wind_speed, 3))
+    
+            for i in range(len(v)):
+                if v[i] < self.v_cut_in:
+                    continue
+    
+                # P[i] = (0.5 * c_p(tsr, b) * self.air_density * area * np.power(v[i], 3))
+                P[i] = 0.5*Cp*self.air_density*area*np.power(v[i], 3) # CQ edit
+                P[i] = P[i] / 1e6  # W to MW
+    
+                if P[i] > self.turbine_size:
+                    P[i] = self.turbine_size
+        else:                           # this is the new bit: import a power curve
+            P = self.power_curve
         for si in range(len(self.sites)):
             site = self.sites[si]
             with open(self.data_path+str(site)+'.csv', 'rU') as csvfile:
@@ -927,11 +979,19 @@ class OnshoreWindModel(GenerationModel):
                     f = (speed % 0.1) / 0.1
                     self.power_out[dn*24 + hr] += ((f*P[p2] + (1 - f)*P[p1])
                                                      *self.n_turbine[si])
-                    self.n_good_points[dn* 24 + hr] += 1
+                    # self.n_good_points[dn* 24 + hr] += 1
+                    #I believe this should be =1 not +=1 (Matt)
+                    self.n_good_points[dn* 24 + hr] = 1
+
+        #the power values have been generated for each point. However, points with missing data are
+        #still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
+        #this out. As we dont want to increase the capacity at this point, we just run scale_output with the
+        #currently installed capacity: the values should not
+        self.scale_output(self.total_installed_capacity)
 
 class TidalStreamTurbineModel_P1(TidalStreamTurbineModel):
 #1MW turbine
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
                  months=list(range(1, 13)),data_path='',
                  save_path='stored_model_runs/',save=True):
         
@@ -946,7 +1006,7 @@ class TidalStreamTurbineModel_P1(TidalStreamTurbineModel):
         
 class TidalStreamTurbineModel_P2(TidalStreamTurbineModel):
 #1.5MW turbine
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
                  months=list(range(1, 13)),data_path='',
                  save_path='stored_model_runs/',save=True):
         
@@ -960,7 +1020,7 @@ class TidalStreamTurbineModel_P2(TidalStreamTurbineModel):
         
 class TidalStreamTurbineModel_P3(TidalStreamTurbineModel):
 #2MW turbine
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
                  months=list(range(1, 13)),data_path='',
                  save_path='stored_model_runs/',save=True):
         
@@ -973,96 +1033,299 @@ class TidalStreamTurbineModel_P3(TidalStreamTurbineModel):
                          save_path=save_path,save=save)
         
 
-class OnshoreWindModel5800(OnshoreWindModel):
-
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
-                 months=list(range(1, 13)),data_path='',
-                 save_path='stored_model_runs/',save=True):
-        
-        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
-                         months=months, 
-                         tilt=5, air_density=1.23, rotor_diameter=170,
-                         rated_rotor_rpm=11.5, rated_wind_speed=14,
-                         v_cut_in=3, v_cut_out=30, n_turbine=None,
-                         turbine_size=5.8,hub_height=135,data_path=data_path,
-                         save_path=save_path,save=save)
-
-class OnshoreWindModel5300(OnshoreWindModel):
-
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
-                 months=list(range(1, 13)),data_path='',
-                 save_path='stored_model_runs/',save=True):
-        
-        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
-                         months=months,
-                         tilt=5, air_density=1.23, rotor_diameter=158,
-                         rated_rotor_rpm=11.5, rated_wind_speed=14,
-                         v_cut_in=3, v_cut_out=37, n_turbine=None,
-                         turbine_size=5.3,hub_height=121,data_path=data_path,
-                         save_path=save_path,save=save)
-
-
-class OnshoreWindModel4200(OnshoreWindModel):
-
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
-                 months=list(range(1, 13)),data_path='',
-                 save_path='stored_model_runs/',save=True):
-        
-        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
-                         months=months, 
-                         tilt=5, air_density=1.23, rotor_diameter=150,
-                         rated_rotor_rpm=11.5, rated_wind_speed=14, v_cut_in=3,
-                         v_cut_out=22.5, n_turbine=None, turbine_size=4.2,
-                         hub_height=100,data_path=data_path, save_path=save_path,
-                         save=save)
-
-
 class OnshoreWindModel3600(OnshoreWindModel):
 
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
                  months=list(range(1, 13)),data_path='',
-                 save_path='stored_model_runs/',save=True):
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
         
         super().__init__(sites=sites, year_min=year_min, year_max=year_max,
                          months=months,
-                         tilt=5, air_density=1.23, rotor_diameter=120,
-                         rated_rotor_rpm=13, rated_wind_speed=12.5, v_cut_in=3,
-                         v_cut_out=25, n_turbine=None, turbine_size=3.6,
-                         hub_height=90,data_path=data_path, save_path=save_path,
+                         tilt=5, air_density=1.23, rotor_diameter=123,
+                         rated_rotor_rpm=13, rated_wind_speed=12, v_cut_in=4,
+                         v_cut_out=25, n_turbine=n_turbine, turbine_size=3.6,
+                         hub_height=80,data_path=data_path, save_path=save_path,
                          save=save)
 
 class OnshoreWindModel2000(OnshoreWindModel):
 
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
                  months=list(range(1, 13)),data_path='',
-                 save_path='stored_model_runs/',save=True):
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
         
         super().__init__(sites=sites, year_min=year_min, year_max=year_max,
                          months=months, 
                          tilt=5, air_density=1.23, rotor_diameter=90,
                          rated_rotor_rpm=14.9, rated_wind_speed=13, v_cut_in=4,
-                         v_cut_out=25, n_turbine=None, turbine_size=2.0,
+                         v_cut_out=25, n_turbine=n_turbine, turbine_size=2.0,
                          hub_height=80,data_path=data_path, save_path=save_path,
                          save=save)
 
+        
+class OnshoreWindModel3000(OnshoreWindModel):
 
-class OnshoreWindModel1500(OnshoreWindModel):
-
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
                  months=list(range(1, 13)),data_path='',
-                 save_path='stored_model_runs/',save=True):
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=113,
+                         rated_rotor_rpm=15.5, rated_wind_speed=12.5, v_cut_in=4,
+                         v_cut_out=25, n_turbine=n_turbine, turbine_size=3.0,
+                         hub_height=80,data_path=data_path, save_path=save_path,
+                         save=save)
+
+class OnshoreWindModel4000(OnshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=130,
+                         rated_rotor_rpm=13, rated_wind_speed=12, v_cut_in=4,
+                         v_cut_out=25, n_turbine=n_turbine, turbine_size=4,
+                         hub_height=90,data_path=data_path, save_path=save_path,
+                         save=save)
+        
+class OnshoreWindModel5000(OnshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=145,
+                         rated_rotor_rpm=11.5, rated_wind_speed=10.5, v_cut_in=4,
+                         v_cut_out=25, n_turbine=n_turbine, turbine_size=5,
+                         hub_height=100,data_path=data_path, save_path=save_path,
+                         save=save)
+
+    
+class OnshoreWindModel6000(OnshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=164,
+                         rated_rotor_rpm=11, rated_wind_speed=10, v_cut_in=4,
+                         v_cut_out=25, n_turbine=n_turbine, turbine_size=6.0,
+                         hub_height=100,data_path=data_path, save_path=save_path,
+                         save=save)
+
+class OnshoreWindModel6600(OnshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=170,
+                         rated_rotor_rpm=11, rated_wind_speed=10, v_cut_in=4,
+                         v_cut_out=25, n_turbine=n_turbine, turbine_size=6.6,
+                         hub_height=100,data_path=data_path, save_path=save_path,
+                         save=save)
+        
+
+
+class OnshoreWindModel7000(OnshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=171.2,
+                         rated_rotor_rpm=10.5, rated_wind_speed=10, v_cut_in=4,
+                         v_cut_out=25, n_turbine=n_turbine, turbine_size=7.0,
+                         hub_height=110,data_path=data_path, save_path=save_path,
+                         save=save)
+        
+
+
+class OffshoreWindModel2000(OffshoreWindModel):
+
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=80,
+                         rated_rotor_rpm=19, rated_wind_speed=14.5, v_cut_in=3.5,
+                         v_cut_out=25, n_turbine=n_turbine, turbine_size=2,
+                         hub_height=80,data_path=data_path, save_path=save_path,
+                         save=save)
+        
+        #based on Vestas v80 2MW: https://en.wind-turbine-models.com/turbines/19-vestas-v80-2.0
+
+
+class OffshoreWindModel3000(OffshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
         
         super().__init__(sites=sites, year_min=year_min, year_max=year_max,
                          months=months,
                          tilt=5, air_density=1.23, rotor_diameter=90,
-                         rated_rotor_rpm=19, rated_wind_speed=11, v_cut_in=3,
-                         v_cut_out=20, n_turbine=None, turbine_size=1.5,
-                         hub_height=65,data_path=data_path, save_path=save_path,
+                         rated_rotor_rpm=18.4, rated_wind_speed=15, v_cut_in=4,
+                         v_cut_out=25, n_turbine=n_turbine, turbine_size=3,
+                         hub_height=80,data_path=data_path, save_path=save_path,
+                         save=save)
+        
+        #based on Vestas V90 3MW: https://en.wind-turbine-models.com/turbines/603-vestas-v90-3.0
+
+class OffshoreWindModel5000(OffshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=126,
+                         rated_rotor_rpm=12, rated_wind_speed=14.5, v_cut_in=3.5,
+                         v_cut_out=30, n_turbine=n_turbine, turbine_size=5,
+                         hub_height=105,data_path=data_path, save_path=save_path,
+                         save=save)
+        
+        #Based on Repower 5M: https://www.thewindpower.net/turbine_en_14_repower_5m.php
+
+class OffshoreWindModel6000(OffshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=154,
+                         rated_rotor_rpm=11, rated_wind_speed=13, v_cut_in=4,
+                         v_cut_out=25, n_turbine=n_turbine, turbine_size=6,
+                         hub_height=120,data_path=data_path, save_path=save_path,
+                         save=save)
+        #based on Siemens SWT-6.0-154: https://en.wind-turbine-models.com/turbines/657-siemens-swt-6.0-154
+        #hub height is an estimation, as it's site specific
+
+
+class OffshoreWindModel7000(OffshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=154,
+                         rated_rotor_rpm=11, rated_wind_speed=13, v_cut_in=3,
+                         v_cut_out=25, n_turbine=n_turbine, turbine_size=7,
+                         hub_height=120,data_path=data_path, save_path=save_path,
+                         save=save)
+        #based on Siemens SWT-7.0-154: https://en.wind-turbine-models.com/turbines/1102-siemens-swt-7.0-154
+        #hub height is an estimation, as it's site specific
+
+class OffshoreWindModel8000(OffshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=164,
+                         rated_rotor_rpm=12, rated_wind_speed=13, v_cut_in=4,
+                         v_cut_out=25, n_turbine=n_turbine, turbine_size=8,
+                         hub_height=140,data_path=data_path, save_path=save_path,
+                         save=save)
+        #based on Vestas V164-8MW: https://en.wind-turbine-models.com/turbines/318-vestas-v164-8.0
+
+
+
+class OffshoreWindModel10000(OffshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=190,
+                         rated_rotor_rpm=11, rated_wind_speed=11.5, v_cut_in=4,
+                         v_cut_out=30, n_turbine=n_turbine, turbine_size=10,
+                         hub_height=135,data_path=data_path, save_path=save_path,
+                         save=save)
+
+
+
+class OffshoreWindModel12000(OffshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=220,
+                         rated_rotor_rpm=11, rated_wind_speed=11, v_cut_in=4,
+                         v_cut_out=30, n_turbine=n_turbine, turbine_size=12,
+                         hub_height=150,data_path=data_path, save_path=save_path,
+                         save=save)
+
+class OffshoreWindModel15000(OffshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=246,
+                         rated_rotor_rpm=11, rated_wind_speed=10.25, v_cut_in=4,
+                         v_cut_out=30, n_turbine=n_turbine, turbine_size=15,
+                         hub_height=150,data_path=data_path, save_path=save_path,
+                         save=save)
+
+class OffshoreWindModel17000(OffshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=262,
+                         rated_rotor_rpm=11, rated_wind_speed=9.75, v_cut_in=4,
+                         v_cut_out=30, n_turbine=n_turbine, turbine_size=17,
+                         hub_height=180,data_path=data_path, save_path=save_path,
+                         save=save)
+
+class OffshoreWindModel20000(OffshoreWindModel):
+
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
+                 months=list(range(1, 13)),data_path='',
+                 save_path='stored_model_runs/',save=True, n_turbine=None):
+        
+        super().__init__(sites=sites, year_min=year_min, year_max=year_max,
+                         months=months,
+                         tilt=5, air_density=1.23, rotor_diameter=284,
+                         rated_rotor_rpm=11, rated_wind_speed=9.55, v_cut_in=3,
+                         v_cut_out=30, n_turbine=n_turbine, turbine_size=20,
+                         hub_height=180,data_path=data_path, save_path=save_path,
                          save=save)
 
 class TidalStreamTurbine_VR_1_0(TidalStreamTurbineModel):
 
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
                  months=list(range(1, 13)),data_path='',
                  save_path='stored_model_runs/',save=True):
         
@@ -1076,7 +1339,7 @@ class TidalStreamTurbine_VR_1_0(TidalStreamTurbineModel):
         
 class TidalStreamTurbine_VR_1_5(TidalStreamTurbineModel):
 
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
                  months=list(range(1, 13)),data_path='',
                  save_path='stored_model_runs/',save=True):
         
@@ -1090,7 +1353,7 @@ class TidalStreamTurbine_VR_1_5(TidalStreamTurbineModel):
         
 class TidalStreamTurbine_VR_2_0(TidalStreamTurbineModel):
 
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
                  months=list(range(1, 13)),data_path='',
                  save_path='stored_model_runs/',save=True):
         
@@ -1104,7 +1367,7 @@ class TidalStreamTurbine_VR_2_0(TidalStreamTurbineModel):
         
 class TidalStreamTurbine_VR_2_5(TidalStreamTurbineModel):
 
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
                  months=list(range(1, 13)),data_path='',
                  save_path='stored_model_runs/',save=True):
         
@@ -1118,7 +1381,7 @@ class TidalStreamTurbine_VR_2_5(TidalStreamTurbineModel):
         
 class TidalStreamTurbine_VR_3_0(TidalStreamTurbineModel):
 
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
                  months=list(range(1, 13)),data_path='',
                  save_path='stored_model_runs/',save=True):
         
@@ -1132,7 +1395,7 @@ class TidalStreamTurbine_VR_3_0(TidalStreamTurbineModel):
         
 class TidalStreamTurbine_VR_3_5(TidalStreamTurbineModel):
 
-    def __init__(self, sites='all', year_min=2013, year_max=2019,
+    def __init__(self, sites=['all'], year_min=2013, year_max=2019,
                  months=list(range(1, 13)),data_path='',
                  save_path='stored_model_runs/',save=True):
         

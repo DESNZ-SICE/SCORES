@@ -51,7 +51,8 @@ class StorageModel:
         self.capacity = capacity
         self.name = name
         self.limits = limits
-
+        self.efficencylosses=0
+        self.dischargelosses=0
         # These will be used to monitor storage usage
         self.en_in = 0 # total energy into storage (grid side)
         self.en_out = 0 # total energy out of storage (grid side)
@@ -159,7 +160,9 @@ class StorageModel:
         None
         '''
         # conversion factors because self.dis measured in %/month not MWh/hr
-        self.charge -= (self.self_dis*self.capacity)*self.t_res/(100*24*30)
+        dischargeamount=(self.self_dis*self.capacity)*self.t_res/(100*24*30)
+        self.charge -= dischargeamount
+        self.dischargelosses+=dischargeamount
         if self.charge < 0:
             self.charge = 0.0
     
@@ -187,6 +190,7 @@ class StorageModel:
         if surplus*self.t_res > largest_in:
             # not all surplus can be stored
             self.charge += largest_in*self.eff_in/100
+            self.efficencylosses += largest_in*(100-self.eff_in)/100
             self.en_in += largest_in
             self.curt += surplus*self.t_res - largest_in
             self.output[t] = surplus - largest_in/self.t_res
@@ -194,6 +198,8 @@ class StorageModel:
         else:
             # all of surplus transfterred to storage
             self.charge += surplus*self.t_res*self.eff_in/100
+            self.efficencylosses += surplus*(100-self.eff_in)/100
+
             self.en_in += surplus*self.t_res
             self.output[t] = 0.0
 
@@ -220,9 +226,10 @@ class StorageModel:
                 
         if surplus*self.t_res*(-1) < largest_out:
             # sufficent storage can be discharged to meet shortfall
-            self.charge += surplus*self.t_res*100/self.eff_out
-            self.en_out -= surplus*self.t_res
-            self.output[t] = 0.0
+            self.charge += surplus*self.t_res*100/self.eff_out   
+            self.efficencylosses+=((-1)*surplus*self.t_res*100/self.eff_out)+surplus  #works out the losses due to the effeciency
+            self.en_out -= surplus*self.t_res #surplus is -ve so this effective adds it to the sum
+            self.output[t] = 0.0 
 
         else:
             # there is insufficient storage to meet shortfall
@@ -232,6 +239,7 @@ class StorageModel:
             if t >= self.start_up_time:
                 shortfall = True
                 self.charge -= largest_out*100/self.eff_out
+                self.efficencylosses+=largest_out*100/self.eff_out -largest_out
 
     def time_step(self, t, surplus):
         '''
@@ -340,6 +348,7 @@ class StorageModel:
         lower = initial_capacity
         upper = max_capacity
         
+        print(f"Desired reliability: {reliability}")
 
         self.set_capacity(upper)
         rel3 = self.charge_sim(surplus,t_res=t_res,start_up_time=start_up_time)
@@ -379,7 +388,7 @@ class BatteryStorageModel(StorageModel):
 
     def __init__(self, eff_in=95, eff_out=95, self_dis=2,
                  variable_cost=0,
-                 fixed_cost=16000, max_c_rate=100, max_d_rate=100,
+                 fixed_cost=23357, max_c_rate=25, max_d_rate=25,
                  capacity=1):
         
         super().__init__(eff_in, eff_out, self_dis, variable_cost, fixed_cost,
@@ -388,8 +397,8 @@ class BatteryStorageModel(StorageModel):
 
 class HydrogenStorageModel(StorageModel):
 
-    def __init__(self, eff_in=67, eff_out=56, self_dis=0, variable_cost=6.5,
-                 fixed_cost=120, max_c_rate=0.032, max_d_rate=0.15,
+    def __init__(self, eff_in=78.7, eff_out=50, self_dis=0, variable_cost=8.44,
+                 fixed_cost=193.9, max_c_rate=0.06, max_d_rate=0.12,
                  capacity=1):
         
         super().__init__(eff_in, eff_out, self_dis, variable_cost, fixed_cost,
@@ -449,6 +458,7 @@ class MultipleStorageAssets:
             self.rel_capacity[i] = copy.deepcopy(assets[i].capacity)
             
         total_capacity = sum(self.rel_capacity)
+        print(f"Debug :{total_capacity}")
         self.capacity = total_capacity
         for i in range(self.n_assets):
             self.rel_capacity[i] = float(self.rel_capacity[i])/total_capacity
@@ -684,10 +694,17 @@ class MultipleStorageAssets:
         '''
         stored = []
         recovered = []
+        #formerly per year, now returned as net
+        # for i in range(self.n_assets):
+        #     stored.append(self.units[i].en_in/self.units[i].n_years)
+        #     recovered.append(self.units[i].en_out/self.units[i].n_years)
+        # curtailed = self.curt/self.units[i].n_years
+
+
         for i in range(self.n_assets):
-            stored.append(self.units[i].en_in/self.units[i].n_years)
-            recovered.append(self.units[i].en_out/self.units[i].n_years)
-        curtailed = self.curt/self.units[i].n_years
+            stored.append(self.units[i].en_in)
+            recovered.append(self.units[i].en_out)
+        curtailed = self.curt
 
         return [stored, recovered, curtailed]
 
@@ -1055,13 +1072,15 @@ class MultipleStorageAssets:
             ax.grid(True)
             ax.legend(loc='upper left');   
 
-    def size_storage(self, surplus, reliability, initial_capacity=None,
-                     req_res=1e5,t_res=1, max_capacity=1e9,
+    def old_size_storage(self, surplus, reliability, initial_capacity=None,
+                        req_res=1e5,t_res=1, max_capacity=1e9,
                      start_up_time=0,strategy='ordered'):
         '''
         == description ==
-        For a fixed relative size of storage assets, this funciton finds the
+        For a fixed relative size of storage assets, this function finds the
         total storage required to meet a certain level of reliability.
+
+        This has been depreciated but is maintained for 
 
         == parameters ==
         surplus: (Array<float>) the surplus generation to be smoothed in MW
@@ -1076,13 +1095,13 @@ class MultipleStorageAssets:
         == returns ==
         capacity: the required total storage capacity in MWh
         '''
-
         if initial_capacity is None:
             initial_capacity = min(surplus)*-1
             
         lower = initial_capacity
         upper = max_capacity
-
+        print(initial_capacity)
+        print(f"desired reliability: {reliability}")
         self.set_capacity(upper)
         rel3 = self.charge_sim(surplus,t_res=t_res,start_up_time=start_up_time,
                                strategy=strategy)
@@ -1094,6 +1113,7 @@ class MultipleStorageAssets:
         rel1 = self.charge_sim(surplus,t_res=t_res,
                                  start_up_time=start_up_time,
                                  strategy=strategy)
+        print(f"Debug: reliability1:{rel1}")
         if rel1 > reliability:
             print('Initial capacity too high')
             if initial_capacity == 0:
@@ -1120,10 +1140,76 @@ class MultipleStorageAssets:
                 
         return (upper+lower)/2
 
+
+    def size_storage(self, surplus, reliability, initial_capacity=None,
+                     req_res=1e4,t_res=1, max_capacity=1e6,
+                     start_up_time=0,strategy='ordered'):
+        '''
+        == description ==
         
-def isfloat(num):
-    try:
-        float(num)
-        return True
-    except ValueError:
-        return False
+        For a fixed relative size of storage assets, this function finds the
+        total storage required to meet a certain level of reliability.
+
+        This uses a crude binary search approach. 
+
+        == parameters ==
+        surplus: (Array<float>) the surplus generation to be smoothed in MW
+        reliability: (float) required reliability in % (0-100)
+        initial_capacity: (float) intital capacity to try in MWh
+        req_res: (float) the required capacity resolution in MWh
+        t_res: (float) the size of time intervals in hours
+        max_storage: (float) the maximum size of storage in MWh to consider
+        start_up_time: (int) number of first time intervals to be ignored when
+            calculating the % of met demand (to allow for start up effects).
+
+        == returns ==
+        capacity: the required total storage capacity in MWh
+        '''
+        initial_capacity=sum([i.capacity for i in self.assets])
+            
+        lower = initial_capacity
+        upper = max_capacity
+        print(initial_capacity)
+        print(f"desired reliability: {reliability}")
+        self.set_capacity(upper)
+        rel3 = self.charge_sim(surplus,t_res=t_res,start_up_time=start_up_time,
+                               strategy=strategy)
+        if rel3 < reliability:
+            self.capacity = upper
+            print("reliabilty constraints not met")
+            return np.inf
+
+        self.set_capacity(lower)
+        rel1 = self.charge_sim(surplus,t_res=t_res,
+                                 start_up_time=start_up_time,
+                                 strategy=strategy)
+        print(f"Debug: reliability1:{rel1}")
+        
+        if rel1 > reliability:
+            print('Initial capacity too high')
+            if initial_capacity == 0:
+                self.capacity=0
+                return 0.0
+            else:
+                self.size_storage(surplus, reliability, initial_capacity=0,
+                                  req_res=req_res,t_res=t_res,
+                                  max_capacity=max_capacity,
+                                  start_up_time=start_up_time,
+                                  strategy=strategy)
+
+        while upper-lower > req_res:
+            mid = (lower+upper)/2
+            self.set_capacity(mid)
+            rel2 = self.charge_sim(surplus,t_res=t_res,
+                                     start_up_time=start_up_time,
+                                     strategy=strategy)
+            if rel2 < reliability:
+                lower = mid
+                rel1 = rel2
+            else:
+                upper = mid
+                rel3 = rel2
+                
+        return (upper+lower)/2
+
+        
