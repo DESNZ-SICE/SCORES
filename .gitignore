@@ -1,0 +1,5 @@
+log/*
+*.pyc
+*.csv
+stored_model_runs/
+scripts/*.py
