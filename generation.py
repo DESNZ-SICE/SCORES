@@ -1251,39 +1251,6 @@ class TidalStreamTurbineModel_P3(TidalStreamTurbineModel):
         )
 
 
-class OnshoreWindModel3600(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=123,
-            rated_rotor_rpm=13,
-            rated_wind_speed=12,
-            v_cut_in=4,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=3.6,
-            hub_height=80,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-        )
-
-
 class OnshoreWindModel2000(OnshoreWindModel):
     def __init__(
         self,
@@ -1348,6 +1315,40 @@ class OnshoreWindModel3000(OnshoreWindModel):
             save_path=save_path,
             save=save,
         )
+
+
+class OnshoreWindModel3600(OnshoreWindModel):
+    def __init__(
+        self,
+        sites=["all"],
+        year_min=2013,
+        year_max=2019,
+        months=list(range(1, 13)),
+        data_path="",
+        save_path="stored_model_runs/",
+        save=True,
+        n_turbine=None,
+    ):
+        super().__init__(
+            sites=sites,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            tilt=5,
+            air_density=1.23,
+            rotor_diameter=123,
+            rated_rotor_rpm=13,
+            rated_wind_speed=12,
+            v_cut_in=4,
+            v_cut_out=25,
+            n_turbine=n_turbine,
+            turbine_size=3.6,
+            hub_height=80,
+            data_path=data_path,
+            save_path=save_path,
+            save=save,
+        )
+
 
 
 class OnshoreWindModel4000(OnshoreWindModel):
@@ -2069,16 +2070,29 @@ class TidalStreamTurbine_VR_3_5(TidalStreamTurbineModel):
         )
 
 
-offshoregenerationdict = {
-    2: OffshoreWindModel2000,
-    3: OffshoreWindModel3000,
-    5: OffshoreWindModel5000,
-    6: OffshoreWindModel6000,
-    7: OffshoreWindModel7000,
-    8: OffshoreWindModel8000,
-    10: OffshoreWindModel10000,
-    12: OffshoreWindModel12000,
-    15: OffshoreWindModel15000,
-    17: OffshoreWindModel17000,
-    20: OffshoreWindModel20000,
-}
+class generatordictionaries:
+    """This class exists to hold generation dictionaries, which connect
+    the turbine size to the correct generation model."""
+    def __init__(self) -> None:
+        self.offshore = {
+            2: OffshoreWindModel2000,
+            3: OffshoreWindModel3000,
+            5: OffshoreWindModel5000,
+            6: OffshoreWindModel6000,
+            7: OffshoreWindModel7000,
+            8: OffshoreWindModel8000,
+            10: OffshoreWindModel10000,
+            12: OffshoreWindModel12000,
+            15: OffshoreWindModel15000,
+            17: OffshoreWindModel17000,
+            20: OffshoreWindModel20000,
+        }
+        self.onshore = {
+            2: OnshoreWindModel2000,
+            3: OnshoreWindModel3000,
+            4: OnshoreWindModel4000,
+            5: OnshoreWindModel5000,
+            6: OnshoreWindModel6000,
+            6.6: OnshoreWindModel6600,
+            7: OnshoreWindModel7000,
+        }
