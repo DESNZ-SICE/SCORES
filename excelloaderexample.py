@@ -16,7 +16,9 @@ Operational
 Operational should be the date the facility went online, in format dd/mm/yyyy
 
 
-The terminology throughout can be 
+The terminology throughout can be confusing. Sites refers to the positions of each wind measurement,
+which are not coincident with the turbines. The closest site to each turbine is found
+
 """
 # %%
 import pandas as pd
@@ -53,31 +55,31 @@ tiledcaps = np.tile(loadeddata["Turbine Capacity (MW)"], (len(generatorkeys), 1)
 
 # these lines tile the generator sizes and the turbine capacities so that we can compare them
 # to find the closest available generator size for each row
-"""
-heres a low dimension example to make this clearer:
-if gen keys is : [1,2,3,4]
-and caps is [3,1,2]
-then tiledgens is:
-[[1,2,3,4],
- [1,2,3,4],
- [1,2,3,4]]
 
-and tiledcaps is:
-[[3,3,3,3],
- [1,1,1,1],
- [2,2,2,2]]
+# heres a low dimension example to make this clearer:
+# if gen keys is : [1,2,3,4]
+# and caps is [3,1,2]
+# then tiledgens is:
+# [[1,2,3,4],
+#  [1,2,3,4],
+#  [1,2,3,4]]
 
-then tiledcaps-tiledgens is:
-[[2,1,0,-1],
- [0,-1,-2,-3],
- [1,0,-1,-2]]
+# and tiledcaps is:
+# [[3,3,3,3],
+#  [1,1,1,1],
+#  [2,2,2,2]]
 
-then np.argmin(abs(tiledcaps-tiledgens), axis=1) is:
-[2,0,1]
-"""
+# then tiledcaps-tiledgens is:
+# [[2,1,0,-1],
+#  [0,-1,-2,-3],
+#  [1,0,-1,-2]]
+
+# then np.argmin(abs(tiledcaps-tiledgens), axis=1) is:
+# [2,0,1]
+
+# We can then use these indices to find the closest generator size for each row
 # %%
-minsvals = np.argmin(abs(tiledcaps - tiledgens), axis=1)
-# %%
+# # %%
 loadeddata["Closest Turbine Size"] = [
     generatorkeys[i] for i in np.argmin(abs(tiledcaps - tiledgens), axis=1)
 ]
@@ -115,8 +117,8 @@ for gensize in differentgensizes:
         )
     )
 
-total2 = 0
+total1 = 0
 for entry in allgenerators:
     averageyearlypowergenerated = np.sum(entry.power_out)
-    total2 += averageyearlypowergenerated
+    total1 += averageyearlypowergenerated
 # %%
