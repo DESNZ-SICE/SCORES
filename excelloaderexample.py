@@ -23,6 +23,7 @@ import pandas as pd
 import numpy as np
 import generation
 import loaderfunctions
+import datetime
 
 folder = "C:/Users/SA0011/Documents/data/"  # general folder with all data in it
 offshorewinddatafolder = (
@@ -73,7 +74,6 @@ then tiledcaps-tiledgens is:
 
 then np.argmin(abs(tiledcaps-tiledgens), axis=1) is:
 [2,0,1]
-
 """
 # %%
 minsvals = np.argmin(abs(tiledcaps - tiledgens), axis=1)
@@ -86,6 +86,11 @@ loadeddata["Closest Turbine Size"] = [
 # and a list of the number of turbines at each site, so we need to group the sites by generator size
 
 loadeddata["site"] = loadeddata["site"].astype(int)
+# %%
+loadeddata["OperationalDatetime"] = pd.to_datetime(
+    loadeddata["Operational"], format="%d/%m/%Y"
+)
+# %%
 differentgensizes = loadeddata["Closest Turbine Size"].unique()
 
 allgenerators = []  # makes an empty list to store the generator objects in
@@ -94,6 +99,9 @@ for gensize in differentgensizes:
     subset = loadeddata[loadeddata["Closest Turbine Size"] == gensize]
     sites = subset["site"].to_list()
     nturbines = subset["No. of Turbines"].to_list()
+    datetimeobjects = subset["OperationalDatetime"].to_list()
+    years = [i.year for i in datetimeobjects]
+    months = [i.month for i in datetimeobjects]
     selectedgenerator = generatordict[gensize]
     allgenerators.append(
         selectedgenerator(
@@ -102,8 +110,13 @@ for gensize in differentgensizes:
             sites=sites,
             n_turbine=nturbines,
             data_path=offshorewinddatafolder,
+            year_online=years,
+            month_online=months,
         )
     )
 
-
+total2 = 0
+for entry in allgenerators:
+    averageyearlypowergenerated = np.sum(entry.power_out)
+    total2 += averageyearlypowergenerated
 # %%
