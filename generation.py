@@ -26,8 +26,8 @@ class GenerationModel:
         data_path,
         save_path,
         limits=[0, 1000000],
-        onlineyear=None,
-        onlinemonth=None,
+        year_online=None,
+        month_online=None,
     ):
         """
         == description ==
@@ -43,8 +43,8 @@ class GenerationModel:
         fixed_cost: (float) cost incurred per MW-year of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
         limits: (array<float>) used for .full_optimise to define the max and min installed generation in MWh ([min,max])
-        onlineyear: list(int) year the generation unit was installed
-        onlinemonth: list(int) month the generation unit was installed
+        year_online: list(int) year the generation unit was installed
+        month_online: list(int) month the generation unit was installed
         == returns ==
         None
         """
@@ -58,15 +58,15 @@ class GenerationModel:
         self.data_path = data_path
         self.save_path = save_path
         self.limits = limits
-        if onlineyear is None:
-            self.onlineyear = [year_min] * len(sites)
+        if year_online is None:
+            self.year_online = [year_min] * len(sites)
         else:
-            self.onlineyear = onlineyear
+            self.year_online = year_online
 
-        if onlinemonth is None:
-            self.onlinemonth = [months[0]] * len(sites)
+        if month_online is None:
+            self.month_online = [months[0]] * len(sites)
         else:
-            self.onlinemonth = onlinemonth
+            self.month_online = month_online
 
         self.date_map = {}
         n = 0
@@ -80,8 +80,8 @@ class GenerationModel:
                 n += 1
                 d += datetime.timedelta(1)
         self.operationaldatetime = [
-            datetime.datetime(self.onlineyear[i], self.onlinemonth[i], 1)
-            for i in range(len(self.onlineyear))
+            datetime.datetime(self.year_online[i], self.month_online[i], 1)
+            for i in range(len(self.year_online))
         ]
 
         self.power_out = [0.0] * len(self.date_map) * 24
@@ -498,8 +498,8 @@ class OffshoreWindModel(GenerationModel):
             "Offshore Wind",
             data_path,
             save_path,
-            year_online,
-            month_online,
+            year_online=year_online,
+            month_online=month_online,
         )
 
         self.tilt = tilt
@@ -521,8 +521,10 @@ class OffshoreWindModel(GenerationModel):
         if file_name == "":
             save = False
 
-        
-        if self.check_for_saved_run(self.save_path + file_name) is False or force_run is True:
+        if (
+            self.check_for_saved_run(self.save_path + file_name) is False
+            or force_run is True
+        ):
             self.run_model()
             if save is True:
                 self.save_run(self.save_path + file_name)
@@ -618,7 +620,7 @@ class OffshoreWindModel(GenerationModel):
                     d = datetime.datetime(int(row[0]), int(row[1]), int(row[2]))
                     if d not in self.date_map:
                         continue
-                    if d<self.operationaldatetime[si]:
+                    if d < self.operationaldatetime[si]:
                         continue
                     dn = self.date_map[d]  # day number (int)
                     hr = int(row[3]) - 1  # hour (int) 0-23
@@ -1027,8 +1029,8 @@ class OnshoreWindModel(GenerationModel):
             "Onshore Wind",
             data_path,
             save_path,
-            year_online,
-            month_online,
+            year_online=year_online,
+            month_online=month_online,
         )
 
         # If no values given assume an equl distribution of turbines over sites
@@ -1052,7 +1054,10 @@ class OnshoreWindModel(GenerationModel):
         if file_name == "":
             save = False
 
-        if self.check_for_saved_run(self.save_path + file_name) is False or force_run is True:
+        if (
+            self.check_for_saved_run(self.save_path + file_name) is False
+            or force_run is True
+        ):
             self.run_model()
             if save is True:
                 self.save_run(self.save_path + file_name)
@@ -1154,7 +1159,7 @@ class OnshoreWindModel(GenerationModel):
                     )
                     if d not in self.date_map:
                         continue
-                    if d<self.operationaldatetime[si]:
+                    if d < self.operationaldatetime[si]:
                         continue
                     dn = self.date_map[d]  # day number (int)
                     hr = int(row[1]) - 1  # hour (int) 0-23
