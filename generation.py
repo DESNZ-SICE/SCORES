@@ -26,6 +26,8 @@ class GenerationModel:
         data_path,
         save_path,
         limits=[0, 1000000],
+        onlineyear=None,
+        onlinemonth=None,
     ):
         """
         == description ==
@@ -41,7 +43,8 @@ class GenerationModel:
         fixed_cost: (float) cost incurred per MW-year of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
         limits: (array<float>) used for .full_optimise to define the max and min installed generation in MWh ([min,max])
-
+        onlineyear: list(int) year the generation unit was installed
+        onlinemonth: list(int) month the generation unit was installed
         == returns ==
         None
         """
@@ -55,17 +58,31 @@ class GenerationModel:
         self.data_path = data_path
         self.save_path = save_path
         self.limits = limits
+        if onlineyear is None:
+            self.onlineyear = [year_min] * len(sites)
+        else:
+            self.onlineyear = onlineyear
+
+        if onlinemonth is None:
+            self.onlinemonth = [months[0]] * len(sites)
+        else:
+            self.onlinemonth = onlinemonth
 
         self.date_map = {}
         n = 0
 
         # first get date range which fits within the bounds
         d = datetime.datetime(self.year_min, min(self.months), 1)
+
         while d.year <= self.year_max:
             if d.month in self.months:
                 self.date_map[d] = n
                 n += 1
                 d += datetime.timedelta(1)
+        self.operationaldatetime = [
+            datetime.datetime(self.onlineyear[i], self.onlinemonth[i], 1)
+            for i in range(len(self.onlineyear))
+        ]
 
         self.power_out = [0.0] * len(self.date_map) * 24
         self.power_out_scaled = [0.0] * len(self.power_out)
@@ -437,6 +454,9 @@ class OffshoreWindModel(GenerationModel):
         alpha=0.143,  # this line added by CQ
         save_path="stored_model_runs/",
         save=True,
+        year_online=None,
+        month_online=None,
+        force_run=False,
     ):
         """
         == description ==
@@ -478,6 +498,8 @@ class OffshoreWindModel(GenerationModel):
             "Offshore Wind",
             data_path,
             save_path,
+            year_online,
+            month_online,
         )
 
         self.tilt = tilt
@@ -499,7 +521,8 @@ class OffshoreWindModel(GenerationModel):
         if file_name == "":
             save = False
 
-        if self.check_for_saved_run(self.save_path + file_name) is False:
+        
+        if self.check_for_saved_run(self.save_path + file_name) is False or force_run is True:
             self.run_model()
             if save is True:
                 self.save_run(self.save_path + file_name)
@@ -595,6 +618,8 @@ class OffshoreWindModel(GenerationModel):
                     d = datetime.datetime(int(row[0]), int(row[1]), int(row[2]))
                     if d not in self.date_map:
                         continue
+                    if d<self.operationaldatetime[si]:
+                        continue
                     dn = self.date_map[d]  # day number (int)
                     hr = int(row[3]) - 1  # hour (int) 0-23
 
@@ -650,6 +675,8 @@ class SolarModel(GenerationModel):
         data_path="",
         save_path="stored_model_runs/",
         save=True,
+        year_online=None,
+        month_online=None,
     ):
         """
         == description ==
@@ -688,6 +715,8 @@ class SolarModel(GenerationModel):
             "Solar",
             data_path,
             save_path,
+            year_online,
+            month_online,
         )
 
         self.orient = np.deg2rad(orient)  # deg -> rad
@@ -774,7 +803,7 @@ class SolarModel(GenerationModel):
             )
 
         # Get the solar data
-        for site in self.sites:
+        for index, site in enumerate(self.sites):
             site_power = [0.0] * len(self.date_map) * 24
             # need to keep each site sepeate at first due to smoothing fix
             site_power = [0] * len(self.n_good_points)
@@ -895,6 +924,8 @@ class SolarModel(GenerationModel):
             # somewhere here I need to do the smoothing fix on final output
             for d in self.date_map:
                 dn = self.date_map[d]
+                if dn < self.operationaldatetime[index]:
+                    continue
                 t = 0
                 if sum(site_power[dn * 24 : (dn + 1) * 24]) == 0:
                     continue
@@ -918,7 +949,7 @@ class SolarModel(GenerationModel):
         # the power values have been generated for each point. However, points with missing data are
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
-        # currently installed capacity: the values should not
+        # currently installed capacity: the values should not change
         self.scale_output(self.total_installed_capacity)
 
 
@@ -949,6 +980,9 @@ class OnshoreWindModel(GenerationModel):
         data_height=50,
         alpha=0.143,  # this row added by CQ to calculate wind shear
         power_curve=None,
+        year_online=None,
+        month_online=None,
+        force_run=False,
     ):  # this added by CQ so that a power curve can optionally be imported
         """
         == description ==
@@ -993,6 +1027,8 @@ class OnshoreWindModel(GenerationModel):
             "Onshore Wind",
             data_path,
             save_path,
+            year_online,
+            month_online,
         )
 
         # If no values given assume an equl distribution of turbines over sites
@@ -1016,7 +1052,7 @@ class OnshoreWindModel(GenerationModel):
         if file_name == "":
             save = False
 
-        if self.check_for_saved_run(self.save_path + file_name) is False:
+        if self.check_for_saved_run(self.save_path + file_name) is False or force_run is True:
             self.run_model()
             if save is True:
                 self.save_run(self.save_path + file_name)
@@ -1116,8 +1152,9 @@ class OnshoreWindModel(GenerationModel):
                     d = datetime.datetime(
                         int(row[0][:4]), int(row[0][5:7]), int(row[0][8:10])
                     )
-
                     if d not in self.date_map:
+                        continue
+                    if d<self.operationaldatetime[si]:
                         continue
                     dn = self.date_map[d]  # day number (int)
                     hr = int(row[1]) - 1  # hour (int) 0-23
@@ -1262,6 +1299,8 @@ class OnshoreWindModel2000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1281,6 +1320,8 @@ class OnshoreWindModel2000(OnshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
 
@@ -1295,6 +1336,8 @@ class OnshoreWindModel3000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1314,6 +1357,8 @@ class OnshoreWindModel3000(OnshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
 
@@ -1328,6 +1373,8 @@ class OnshoreWindModel3600(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1347,8 +1394,9 @@ class OnshoreWindModel3600(OnshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
-
 
 
 class OnshoreWindModel4000(OnshoreWindModel):
@@ -1362,6 +1410,8 @@ class OnshoreWindModel4000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1381,6 +1431,8 @@ class OnshoreWindModel4000(OnshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
 
@@ -1395,6 +1447,8 @@ class OnshoreWindModel5000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1414,6 +1468,8 @@ class OnshoreWindModel5000(OnshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
 
@@ -1428,6 +1484,8 @@ class OnshoreWindModel6000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1447,6 +1505,8 @@ class OnshoreWindModel6000(OnshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
 
@@ -1461,6 +1521,8 @@ class OnshoreWindModel6600(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1480,6 +1542,8 @@ class OnshoreWindModel6600(OnshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
 
@@ -1494,6 +1558,8 @@ class OnshoreWindModel7000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1513,6 +1579,8 @@ class OnshoreWindModel7000(OnshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
 
@@ -1527,6 +1595,8 @@ class OffshoreWindModel2000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1546,6 +1616,8 @@ class OffshoreWindModel2000(OffshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
         # based on Vestas v80 2MW: https://en.wind-turbine-models.com/turbines/19-vestas-v80-2.0
@@ -1562,6 +1634,8 @@ class OffshoreWindModel3000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1581,6 +1655,8 @@ class OffshoreWindModel3000(OffshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
         # based on Vestas V90 3MW: https://en.wind-turbine-models.com/turbines/603-vestas-v90-3.0
@@ -1597,6 +1673,8 @@ class OffshoreWindModel5000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1616,6 +1694,8 @@ class OffshoreWindModel5000(OffshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
         # Based on Repower 5M: https://www.thewindpower.net/turbine_en_14_repower_5m.php
@@ -1632,6 +1712,8 @@ class OffshoreWindModel6000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1651,6 +1733,8 @@ class OffshoreWindModel6000(OffshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
         # based on Siemens SWT-6.0-154: https://en.wind-turbine-models.com/turbines/657-siemens-swt-6.0-154
         # hub height is an estimation, as it's site specific
@@ -1667,6 +1751,8 @@ class OffshoreWindModel7000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1686,6 +1772,8 @@ class OffshoreWindModel7000(OffshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
         # based on Siemens SWT-7.0-154: https://en.wind-turbine-models.com/turbines/1102-siemens-swt-7.0-154
         # hub height is an estimation, as it's site specific
@@ -1702,6 +1790,8 @@ class OffshoreWindModel8000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1721,6 +1811,8 @@ class OffshoreWindModel8000(OffshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
         # based on Vestas V164-8MW: https://en.wind-turbine-models.com/turbines/318-vestas-v164-8.0
 
@@ -1736,6 +1828,8 @@ class OffshoreWindModel10000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1755,6 +1849,8 @@ class OffshoreWindModel10000(OffshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
 
@@ -1769,6 +1865,8 @@ class OffshoreWindModel12000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1788,6 +1886,8 @@ class OffshoreWindModel12000(OffshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
 
@@ -1802,6 +1902,8 @@ class OffshoreWindModel15000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1821,6 +1923,8 @@ class OffshoreWindModel15000(OffshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
 
@@ -1835,6 +1939,8 @@ class OffshoreWindModel17000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1854,6 +1960,8 @@ class OffshoreWindModel17000(OffshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
 
@@ -1868,6 +1976,8 @@ class OffshoreWindModel20000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        year_online=None,
+        month_online=None,
     ):
         super().__init__(
             sites=sites,
@@ -1887,6 +1997,8 @@ class OffshoreWindModel20000(OffshoreWindModel):
             data_path=data_path,
             save_path=save_path,
             save=save,
+            year_online=year_online,
+            month_online=month_online,
         )
 
 
@@ -2073,6 +2185,7 @@ class TidalStreamTurbine_VR_3_5(TidalStreamTurbineModel):
 class generatordictionaries:
     """This class exists to hold generation dictionaries, which connect
     the turbine size to the correct generation model."""
+
     def __init__(self) -> None:
         self.offshore = {
             2: OffshoreWindModel2000,
