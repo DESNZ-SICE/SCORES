@@ -26,6 +26,7 @@ import numpy as np
 import generation
 import loaderfunctions
 import datetime
+import time
 
 folder = "C:/Users/SA0011/Documents/data/"  # general folder with all data in it
 offshorewinddatafolder = (
@@ -97,6 +98,7 @@ differentgensizes = loadeddata["Closest Turbine Size"].unique()
 
 allgenerators = []  # makes an empty list to store the generator objects in
 
+starttime = time.time()
 for gensize in differentgensizes:
     subset = loadeddata[loadeddata["Closest Turbine Size"] == gensize]
     sites = subset["site"].to_list()
@@ -114,6 +116,7 @@ for gensize in differentgensizes:
             data_path=offshorewinddatafolder,
             year_online=years,
             month_online=months,
+            force_run=True,
         )
     )
 
@@ -121,4 +124,5 @@ total1 = 0
 for entry in allgenerators:
     averageyearlypowergenerated = np.sum(entry.power_out)
     total1 += averageyearlypowergenerated
+print(f"Time elaped: {time.time()-starttime}")
 # %%
