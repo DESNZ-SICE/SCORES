@@ -114,8 +114,8 @@ for gensize in differentgensizes:
             sites=sites,
             n_turbine=nturbines,
             data_path=offshorewinddatafolder,
-            year_online=years,
-            month_online=months,
+            year_online=None,
+            month_online=None,
             force_run=True,
         )
     )
@@ -125,4 +125,18 @@ for entry in allgenerators:
     averageyearlypowergenerated = np.sum(entry.power_out)
     total1 += averageyearlypowergenerated
 print(f"Time elaped: {time.time()-starttime}")
+# %%
+import matplotlib.pyplot as plt
+
+turbinsize = [i.turbine_size for i in allgenerators]
+loadfactors = [i.get_load_factor() for i in allgenerators]
+plt.plot(turbinsize, loadfactors, "o")
+plt.xlabel("Turbine Size (MW)")
+plt.ylabel("Load Factor")
+plt.show()
+for i in allgenerators:
+    print(f"{i.turbine_size} MW turbine")
+    print(i.get_load_factor())
+    print("----------")
+
 # %%
