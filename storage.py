@@ -41,6 +41,8 @@ class StorageModel:
         == returns ==
         None
         '''
+        self.energy_shortfalls=0
+        self.actual_reliability=0
         self.eff_in = eff_in
         self.eff_out = eff_out
         self.self_dis = self_dis
@@ -51,7 +53,7 @@ class StorageModel:
         self.capacity = capacity
         self.name = name
         self.limits = limits
-        self.efficencylosses=0
+        self.R=0
         self.dischargelosses=0
         # These will be used to monitor storage usage
         self.en_in = 0 # total energy into storage (grid side)
@@ -77,6 +79,7 @@ class StorageModel:
         self.en_in = 0
         self.en_out = 0
         self.curt = 0
+        self.efficiencylosses=0 
         
         self.discharge = np.empty([]) 
         self.charge = np.empty([]) 
@@ -190,7 +193,7 @@ class StorageModel:
         if surplus*self.t_res > largest_in:
             # not all surplus can be stored
             self.charge += largest_in*self.eff_in/100
-            self.efficencylosses += largest_in*(100-self.eff_in)/100
+            self.efficiencylosses += largest_in*(100-self.eff_in)/100
             self.en_in += largest_in
             self.curt += surplus*self.t_res - largest_in
             self.output[t] = surplus - largest_in/self.t_res
@@ -198,7 +201,7 @@ class StorageModel:
         else:
             # all of surplus transfterred to storage
             self.charge += surplus*self.t_res*self.eff_in/100
-            self.efficencylosses += surplus*(100-self.eff_in)/100
+            self.efficiencylosses += surplus*(100-self.eff_in)/100
 
             self.en_in += surplus*self.t_res
             self.output[t] = 0.0
@@ -227,7 +230,7 @@ class StorageModel:
         if surplus*self.t_res*(-1) < largest_out:
             # sufficent storage can be discharged to meet shortfall
             self.charge += surplus*self.t_res*100/self.eff_out   
-            self.efficencylosses+=((-1)*surplus*self.t_res*100/self.eff_out)+surplus  #works out the losses due to the effeciency
+            self.efficiencylosses+=((-1)*surplus*self.t_res*100/self.eff_out)+surplus  #works out the losses due to the effeciency
             self.en_out -= surplus*self.t_res #surplus is -ve so this effective adds it to the sum
             self.output[t] = 0.0 
 
@@ -239,7 +242,7 @@ class StorageModel:
             if t >= self.start_up_time:
                 shortfall = True
                 self.charge -= largest_out*100/self.eff_out
-                self.efficencylosses+=largest_out*100/self.eff_out -largest_out
+                self.efficiencylosses+=largest_out*100/self.eff_out -largest_out
 
     def time_step(self, t, surplus):
         '''
@@ -284,7 +287,8 @@ class StorageModel:
         self.charge = 0.0 # intialise stosrage as empty
         self.output = [0]*len(surplus)
         self.n_years = len(surplus)/(365.25*24/t_res)
-
+        self.energy_shortfalls=0
+        self.efficiencylosses=0
         shortfalls = 0 # timesteps where demand could not be met
         soc = []
         # for convenience, these are the ramp rates in MWh 
@@ -297,10 +301,11 @@ class StorageModel:
             if self.output[t] < 0:
                 if t > start_up_time:                
                     shortfalls += 1
+                    self.energy_shortfalls+=self.output[t]*-1
             
         reliability = 100 - ((shortfalls*100)/(len(surplus)
                                                -self.start_up_time))
-        
+        self.actual_reliability = reliability
         if return_output is False and return_soc is False:
             return reliability
         elif return_soc is True:
@@ -434,6 +439,8 @@ class MultipleStorageAssets:
         == returns ==
         None
         '''
+        self.energy_shortfalls=0
+        self.actual_reliability=0
         self.assets = assets
         self.n_assets = len(assets)
         self.rel_capacity = [0.0]*len(assets)
@@ -576,6 +583,8 @@ class MultipleStorageAssets:
             raise Exception('d_order wrong length')
         
         shortfalls = 0
+        self.energy_shortfalls=0
+
         output = [0]*len(surplus)
         soc = []
         for i in range(self.n_assets):
@@ -597,6 +606,8 @@ class MultipleStorageAssets:
             self.units[i].charge = 0.0
             self.units[i].n_years = len(surplus)/(365.25*24/t_res)
             self.units[i].output = [0]*len(surplus)
+            self.units[i].energy_shortfalls=0
+            self.units[i].efficiencylosses=0
         
         for t in range(len(surplus)):
             # self discharge all assets
@@ -626,6 +637,7 @@ class MultipleStorageAssets:
                 if output[t] < 0:
                     if t > start_up_time:                    
                         shortfalls += 1
+                        self.energy_shortfalls+=output[t]*-1
             #soc[i].append(self.charge)
             
         reliability = 100 - ((shortfalls*100)/(len(surplus)-start_up_time))
@@ -675,6 +687,7 @@ class MultipleStorageAssets:
                                              return_output=return_output,
                                              start_up_time=start_up_time,
                                              return_di_av=return_di_av)
+        self.actual_reliability = res
         return res
 
     def analyse_usage(self):
@@ -1142,7 +1155,7 @@ class MultipleStorageAssets:
 
 
     def size_storage(self, surplus, reliability, initial_capacity=None,
-                     req_res=1e4,t_res=1, max_capacity=1e6,
+                     req_res=1e4,t_res=1, max_capacity=1e7,
                      start_up_time=0,strategy='ordered'):
         '''
         == description ==
