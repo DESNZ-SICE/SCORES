@@ -119,6 +119,7 @@ def get_GB_demand(
     heat_demand=0,  # demands in each sector can optionally be defined in TWh/yr. Demand profile will then be scaled accordingly
     ev_demand=0,
     units="MW",
+    data_folder="data",
 ):
     """
     Gets the hourly GB electricity demand from the specified time range
@@ -161,13 +162,13 @@ def get_GB_demand(
         wkday = []
         sat = []
         sun = []
-        with open("data/ev_demand.csv", "r") as csvfile:
+        with open(f"{data_folder}/ev_demand.csv", "r") as csvfile:
             reader = csv.reader(csvfile)
             for row in reader:
                 wkday.append(float(row[0]) * ev_scaler)
                 sat.append(float(row[1]) * ev_scaler)
                 sun.append(float(row[2]) * ev_scaler)
-    with open("data/demand.csv", "r") as csvfile:
+    with open(f"{data_folder}/demand.csv", "r") as csvfile:
         reader = csv.reader(csvfile)
         next(reader)
         for row in reader:
@@ -175,6 +176,7 @@ def get_GB_demand(
                 2000 + int(row[0][7:]), ms[row[0][3:6]], int(row[0][:2])
             )
             if dt < d:
+                print("too early")
                 continue
             if d > df:
                 continue
@@ -227,7 +229,7 @@ def get_GB_demand(
         #         4.35,4.292105263,4.06893039,3.787860781,3.451697793,3.396604414]
         extra = {}
 
-        with open("data/daily_gas.csv", "r") as csvfile:
+        with open(f"{data_folder}/daily_gas.csv", "r") as csvfile:
             reader = csv.reader(csvfile)
             next(reader)
             for row in reader:
