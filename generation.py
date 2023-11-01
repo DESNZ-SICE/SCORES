@@ -79,6 +79,7 @@ class GenerationModel:
                 self.date_map[d] = n
                 n += 1
                 d += datetime.timedelta(1)
+
         self.operationaldatetime = [
             datetime.datetime(self.year_online[i], self.month_online[i], 1)
             for i in range(len(self.year_online))
@@ -672,7 +673,7 @@ class SolarModel(GenerationModel):
         tilt=22,
         efficiency=0.17,
         performance_ratio=0.85,
-        plant_capacity=1,
+        plant_capacities=[1],
         area_factor=5.84,
         data_path="",
         save_path="stored_model_runs/",
@@ -698,7 +699,7 @@ class SolarModel(GenerationModel):
         tilt: (float) panel tilt in degrees
         efficiency: (float) panel efficiency 0-1
         performance_ratio: (float) panel perfromace ratio 0-1
-        plant_capacity: (float) installed capacity in MW
+        plant_capacities: (Array<float>) installed capacity of each site in MW
         area_factor: (float) panel area per installed kW in m2/kW
         data_path: (str) path to file containing raw data
         save_path: (str) path to file where output will be saved
@@ -725,7 +726,7 @@ class SolarModel(GenerationModel):
         self.tilt = np.deg2rad(tilt)  # deg -> rad
         self.efficiency = efficiency
         self.performance_ratio = performance_ratio
-        self.plant_capacity = plant_capacity * 1e3  # MW to kW
+        self.plant_capacities = plant_capacities
         self.area_factor = area_factor
 
         file_name = get_filename(sites, "s", year_min, year_max, months)
@@ -759,6 +760,8 @@ class SolarModel(GenerationModel):
                 for row in reader:
                     sites.append(int(row[0]))
             self.sites = sites
+            if self.plant_capacities == []:
+                self.plant_capacities = [1] * len(sites)
 
         elif self.sites[:2] == "lf":
             sites = []
@@ -778,7 +781,7 @@ class SolarModel(GenerationModel):
                         sites.apend(int(row[0]))
             self.sites = sites
 
-        self.total_installed_capacity = self.plant_capacity * len(self.sites) * 1e-3
+        self.total_installed_capacity = sum(self.plant_capacities)
 
         # Need to get the site latitutudes
         site_lat = {}
@@ -788,7 +791,7 @@ class SolarModel(GenerationModel):
             for row in reader:
                 site_lat[int(row[0])] = np.deg2rad(float(row[1]))
 
-        plant_area = self.plant_capacity * self.area_factor
+        plant_area = [i * self.area_factor * 10**3 for i in self.plant_capacities]
         solar_constant = 1367  # W/m2
 
         # hourly angles
@@ -920,14 +923,18 @@ class SolarModel(GenerationModel):
                     D = D_beam + D_dhi
 
                     site_power[dn * 24 + hr] += (
-                        D * plant_area * self.efficiency * self.performance_ratio * 1e-6
+                        D
+                        * plant_area[index]
+                        * self.efficiency
+                        * self.performance_ratio
+                        * 1e-6
                     )
 
             # somewhere here I need to do the smoothing fix on final output
             for d in self.date_map:
-                dn = self.date_map[d]
-                if dn < self.operationaldatetime[index]:
+                if d <self.operationaldatetime[index]:
                     continue
+                dn = self.date_map[d]
                 t = 0
                 if sum(site_power[dn * 24 : (dn + 1) * 24]) == 0:
                     continue
@@ -1328,7 +1335,7 @@ class OnshoreWindModel2000(OnshoreWindModel):
             save=save,
             year_online=year_online,
             month_online=month_online,
-            force_run=force_run
+            force_run=force_run,
         )
 
 
