@@ -8,7 +8,7 @@ import csv
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
-
+import time
 from fns import lambda_i, c_p, get_filename
 
 
@@ -87,6 +87,8 @@ class GenerationModel:
 
         self.power_out = [0.0] * len(self.date_map) * 24
         self.power_out_scaled = [0.0] * len(self.power_out)
+
+        self.power_out_array = np.array(self.power_out)
         self.n_good_points = [0] * len(self.date_map) * 24
 
     def scale_output(self, installed_capacity):
@@ -489,6 +491,11 @@ class OffshoreWindModel(GenerationModel):
         == returns ==
         None
         """
+        self.stepnames = []
+        self.steptimes = []
+        stepstarttime = time.time()
+        self.startdate = datetime.datetime(year_min, months[0], 1)
+        self.enddate = datetime.datetime(year_max+1, months[0], 1)
         super().__init__(
             sites,
             year_min,
@@ -502,6 +509,9 @@ class OffshoreWindModel(GenerationModel):
             year_online=year_online,
             month_online=month_online,
         )
+        generatorinittimes = time.time() - stepstarttime
+        self.stepnames.append("generator init")
+        self.steptimes.append(generatorinittimes)
 
         self.tilt = tilt
         self.air_density = air_density
@@ -529,6 +539,17 @@ class OffshoreWindModel(GenerationModel):
             self.run_model()
             if save is True:
                 self.save_run(self.save_path + file_name)
+        # for entry in range(len(self.stepnames)):
+        #     plt.bar(
+        #         "Time taken",
+        #         self.steptimes[entry],
+        #         bottom=sum(self.steptimes[0:entry]),
+        #         label=self.stepnames[entry],
+        #     )
+        # plt.legend()
+        # plt.ylabel("Time taken (s)")
+        # plt.title(f"Site number: {len(sites)}")
+        # plt.show()
 
     def __str__(self):
         return f"Offshore wind model\nNumber of Turbines:{sum(self.n_turbine)}\t Turbine Power:\
@@ -545,7 +566,7 @@ class OffshoreWindModel(GenerationModel):
         == returns ==
         None
         """
-
+        stepstartime = time.time()
         if self.data_path == "":
             raise Exception("model can not be run without a data path")
         if self.sites[0] == "all":
@@ -592,7 +613,6 @@ class OffshoreWindModel(GenerationModel):
         # create the power curve at intervals of 0.1
         v = np.arange(0, self.v_cut_out, 0.1)  # wind speeds (m/s)
         P = [0.0] * len(v)  # power output (MW)
-
         # assume a fixed Cp - calculate this value using the turbine's rated wind speed and rated power
         Cp = (
             self.turbine_size
@@ -611,53 +631,121 @@ class OffshoreWindModel(GenerationModel):
             if P[i] > self.turbine_size:
                 P[i] = self.turbine_size
 
+        Parray = np.array(P)
+        self.stepnames.append("power curve")
+        self.steptimes.append(time.time() - stepstartime)
+        stepstartime = time.time()
+        unneededloadtime = 0
+        neededloadtime = 0
+        computationtime = 0
         # Next get the wind data
+
+        # THIS IS A TEMPORARY OPTIMISATION TEST, THE START DATE OF THE
+        # DATA NEEDS TO BE FOUND INSTEAD OF ASSUMED TO BE 1980
+        datastartdate = datetime.datetime(1980, 1, 1)
+
+        startdelta = self.startdate - datastartdate
+        starthoursdelta = int(startdelta.days * 24)
+        enddelta = self.enddate - datastartdate
+        endhoursdelta = int(enddelta.days * 24)
+
         for si in range(len(self.sites)):
             site = self.sites[si]
+            site_speeds = []
+
+            # loadedspeeds = np.loadtxt(
+            #     self.data_path + str(site) + ".csv",
+            #     delimiter=",",
+            #     skiprows=1,
+            #     usecols=6,
+            # )[starthoursdelta:endhoursdelta]
+            # print(loadedspeeds[0:5])
+            rowcounter = 0
             with open(self.data_path + str(site) + ".csv", "rU") as csvfile:
                 reader = csv.reader(csvfile)
                 next(reader)
                 for row in reader:
+                    rowcounter += 1
+                    stepstartime = time.time()
                     d = datetime.datetime(int(row[0]), int(row[1]), int(row[2]))
                     if d not in self.date_map:
+                        unneededloadtime += time.time() - stepstartime
                         continue
                     if d < self.operationaldatetime[si]:
+                        unneededloadtime += time.time() - stepstartime
                         continue
-                    dn = self.date_map[d]  # day number (int)
-                    hr = int(row[3]) - 1  # hour (int) 0-23
+                    # print(rowcounter)
+                    site_speeds.append(row[6])
+                    neededloadtime += time.time() - stepstartime
 
-                    # skip missing data
-                    if float(row[6]) >= 0:
-                        speed = float(row[6])
-                    else:
-                        continue
+                    # dn = self.date_map[d]  # day number (int)
+                    # hr = int(row[3])  # hour (int) 0-23
+                    # if dn * 24 + hr < 5:
+                    #     print(row[6])
 
-                    # adjust wind speed to hub height (CQ addition - prevoiusly was only in onshore model)
-                    speed = speed * np.power(
-                        self.hub_height / self.data_height, self.alpha
-                    )
+                    # # skip missing data
+                    # if float(row[6]) >= 0:
+                    #     speed = float(row[6])
+                    # else:
+                    #     continue
 
-                    # prevent overload
-                    if speed > v[-1]:
-                        speed = v[-1]
+                    # # adjust wind speed to hub height (CQ addition - prevoiusly was only in onshore model)
+                    # speed = speed * np.power(
+                    #     self.hub_height / self.data_height, self.alpha
+                    # )
 
-                    # interpolate the closest values from the power curve
-                    p1 = int(speed / 0.1)
-                    p2 = p1 + 1
-                    if p2 == len(P):
-                        p2 = p1
-                    f = (speed % 0.1) / 0.1
-                    self.power_out[dn * 24 + hr] += (
-                        f * P[p2] + (1 - f) * P[p1]
-                    ) * self.n_turbine[si]
-                    # self.n_good_points[dn* 24 + hr] += 1
-                    # I believe this should be =1 not +=1 (Matt)
-                    self.n_good_points[dn * 24 + hr] = 1
+                    # # prevent overload
+                    # if speed > v[-1]:
+                    #     speed = v[-1]
+
+                    # # interpolate the closest values from the power curve
+                    # p1 = int(speed / 0.1)
+                    # p2 = p1 + 1
+                    # if p2 == len(P):
+                    #     p2 = p1
+                    # f = (speed % 0.1) / 0.1
+                    # self.power_out[dn * 24 + hr] += (
+                    #     f * P[p2] + (1 - f) * P[p1]
+                    # ) * self.n_turbine[si]
+                    # # self.n_good_points[dn* 24 + hr] += 1
+                    # # I believe this should be =1 not +=1 (Matt)
+                    # self.n_good_points[dn * 24 + hr] = 1
+                starttime = time.time()
+                site_speeds = np.array(site_speeds)
+                site_speeds = site_speeds.astype(float)
+                site_speeds[site_speeds < 0] = 0
+                site_speeds = site_speeds * np.power(
+                    self.hub_height / self.data_height, self.alpha
+                )
+                site_speeds[site_speeds > v[-1]] = v[-1]
+                p1s = np.floor(site_speeds / 0.1).astype(int)
+                p2s = p1s + 1
+                p2s[p2s == len(P)] = p1s[p2s == len(P)]
+                fs = (site_speeds % 0.1) / 0.1
+                poweroutvals = (
+                    fs * Parray[p2s] + (1 - fs) * Parray[p1s]
+                ) * self.n_turbine[si]
+                self.power_out_array += poweroutvals
+                computationtime += time.time() - starttime
+
         # the power values have been generated for each point. However, points with missing data are
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
         # currently installed capacity: the values should not
+
+        # compares the two methods of calculating power output
+        self.power_out = self.power_out_array.tolist()
+
+        # self.stepnames.append("needed load")
+        # self.steptimes.append(neededloadtime)
+        # self.stepnames.append("unneeded load")
+        # self.steptimes.append(unneededloadtime)
+        # stepstartime = time.time()
         self.scale_output(self.total_installed_capacity)
+        # self.stepnames.append("scale output")
+        # self.steptimes.append(time.time() - stepstartime)
+        # self.stepnames.append("computation")
+        # self.steptimes.append(computationtime)
 
 
 class SolarModel(GenerationModel):
@@ -932,7 +1020,7 @@ class SolarModel(GenerationModel):
 
             # somewhere here I need to do the smoothing fix on final output
             for d in self.date_map:
-                if d <self.operationaldatetime[index]:
+                if d < self.operationaldatetime[index]:
                     continue
                 dn = self.date_map[d]
                 t = 0
