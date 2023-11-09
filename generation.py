@@ -73,7 +73,7 @@ class GenerationModel:
 
         # first get date range which fits within the bounds
         d = datetime.datetime(self.year_min, min(self.months), 1)
-
+        self.startdatetime = d
         while d.year <= self.year_max:
             if d.month in self.months:
                 self.date_map[d] = n
@@ -91,7 +91,7 @@ class GenerationModel:
         self.power_out_array = np.array(self.power_out)
         self.n_good_points = [0] * len(self.date_map) * 24
 
-    def scale_output(self, installed_capacity):
+    def scale_output(self, installed_capacity, scale=False):
         """
         == description ==
         This function sets the parameter power_out_scaled to be a linearly
@@ -104,10 +104,10 @@ class GenerationModel:
         == returns ==
         None
         """
-
-        sf = installed_capacity / self.total_installed_capacity
-
-        mp = max(self.n_good_points)
+        if scale:
+            sf = installed_capacity / self.total_installed_capacity
+        else:
+            sf = 1
         for t in range(len(self.power_out)):
             # If no data is available forward fill
             if self.n_good_points[t] == 0:
@@ -240,6 +240,87 @@ class GenerationModel:
             p[t % 24] += self.power_out_scaled[t] / sf
 
         return p
+
+
+class NuclearModel(GenerationModel):
+    def __init__(
+        self,
+        sites=[0],
+        year_min=2013,
+        year_max=2019,
+        months=list(range(1, 13)),
+        fixed_cost=2000000,
+        variable_cost=0,
+        data_path="",
+        save_path="stored_model_runs/",
+        save=True,
+        year_online=None,
+        month_online=None,
+        capacities=[1000],
+    ):
+        """
+        == description ==
+        Initialises an OffshoreWindModel object. Searches for a saved result at
+        save_path, otherwise generates a power curve and calculates the
+        aggregated power output from turbines at the locations contained in
+        sites.
+
+        == parameters ==
+        sites: (Array<int>) List of site indexes to be used. The site indexes here mean little, but
+        are used for consistency. The length of the site index must match the length of the capacities
+        year_min: (int) earliest year in sumlation
+        year_max: (int) latest year in simulation
+        months: (Array<int>) list of months to be included in the simulation
+        fixed_cost: (float) cost incurred per MW of installation in GBP
+        variable_cost: (float) cost incurred per MWh of generation in GBP
+        data_path: (str) path to file containing raw data
+        save_path: (str) path to file where output will be saved
+        save: (boo) determines whether to save the results of the run
+        capacity: (Array <float>) installed capacity of each site in MW
+        == returns ==
+        None
+        """
+        # raises an error if the number of sites and the number of capacities are not the same
+        if len(capacities) != len(sites):
+            raise Exception(
+                "The number of sites and the number of capacities must be the same"
+            )
+
+        super().__init__(
+            sites,
+            year_min,
+            year_max,
+            months,
+            fixed_cost,
+            variable_cost,
+            "Nuclear",
+            data_path,
+            save_path,
+            year_online,
+            month_online,
+        )
+        self.total_installed_capacity = sum(capacities)
+
+        self.run_model()
+
+    def __str__(self):
+        return f"Nuclear Generator, total capacity: {self.total_installed_capacity} MW"
+
+    def run_model(self):
+        """
+        == description ==
+        Generates power output. This is assumed as constant for Nuclear plants, so is only
+        affected by the installed capacity and the operational date.
+        """
+
+        for sitenum in range(len(self.sites)):
+            operationaltime = self.operationaldatetime[sitenum]
+            timedelta = self.startdatetime - operationaltime
+            timedeltahours = timedelta.days * 24 + timedelta.seconds / 3600
+            timedeltahours = int(timedeltahours)
+            self.power_out[timedeltahours:] += self.plant_capacities[sitenum]
+
+        self.scale_output(self.total_installed_capacity)
 
 
 class TidalStreamTurbineModel(GenerationModel):
