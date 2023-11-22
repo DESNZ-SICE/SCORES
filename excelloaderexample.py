@@ -30,11 +30,13 @@ import time
 
 folder = "C:/Users/SA0011/Documents/data/"  # general folder with all data in it
 offshorewinddatafolder = (
-    folder + "offshore_wind/"
+    folder + "meerabiasedwind/"
 )  # subfolder with offshore wind site data
 filename = "Offshore_wind_operational_July_2023.xlsx"
 loadeddata = pd.read_excel(folder + filename)
+loadeddata = loadeddata[loadeddata["Country"] == "Scotland"]
 
+# %%
 generatordict = generation.generatordictionaries().offshore
 generatorkeys = np.array(list(generatordict.keys()))
 # makes the turbne sizes into an array
@@ -109,13 +111,13 @@ for gensize in differentgensizes:
     selectedgenerator = generatordict[gensize]
     allgenerators.append(
         selectedgenerator(
-            year_min=2014,
-            year_max=2019,
+            year_min=2021,
+            year_max=2021,
             sites=sites,
             n_turbine=nturbines,
             data_path=offshorewinddatafolder,
-            year_online=None,
-            month_online=None,
+            year_online=years,
+            month_online=months,
             force_run=True,
         )
     )

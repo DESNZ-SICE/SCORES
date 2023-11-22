@@ -39,7 +39,6 @@ class ElectricitySystem:
         start_up_time=0,
         strategy="ordered",
         aggEV_list=aggEV.MultipleAggregatedEVs([]),
-        nuclear_power=0,
     ):
         """
         == description ==
@@ -57,7 +56,6 @@ class ElectricitySystem:
         strategy: (str) the strategy for operating the assets. Options:
                 'ordered' - charges/discharges according to self.c_order/d_order
                 'balanced' - ?
-        nuclear_power: (float) the amount of nuclear power in GW
         == returns ==
         None
 
@@ -79,15 +77,14 @@ class ElectricitySystem:
         self.start_up_time = start_up_time
         self.strategy = strategy
         self.stor_list = stor_list
-        self.nuclear_power = nuclear_power
         # initialise bounds that are used for optimisation
         self.min_gen_cap = [0.0] * len(gen_list)
         self.max_gen_cap = [np.inf] * len(gen_list)
         self.storage = MultipleStorageAssets(stor_list)
 
         for gen in self.gen_list:
-            if max(gen.power_out_scaled) == 0:
-                gen.scale_output(1)
+            # if max(gen.power_out_scaled) == 0:
+            #     gen.scale_output(1)
             self.total_installed_generation += gen.scaled_installed_capacity
 
     def scale_generation(self, gen_cap):
@@ -148,7 +145,7 @@ class ElectricitySystem:
         None
 
         """
-        self.surplus = [self.nuclear_power * 1000] * self.len
+        self.surplus = [0] * self.len
         for t in range(self.len):
             for gen in self.gen_list:
                 self.surplus[t] += gen.power_out_scaled[t]
@@ -276,7 +273,6 @@ class ElectricitySystem:
         f.write("---------------------\n\n")
         for i in range(len(self.gen_list)):
             f.write(self.gen_list[i].name + ": " + str(x[i]) + " GW\n")
-        f.write(f"Nuclear: {self.nuclear_power} GW\n")
         f.write("\n>>TOTAL: " + str(sum(x[: len(self.gen_list)])) + " GW\n\n")
         f.write("------------------\n")
         f.write("INSTALLED STORAGE\n")

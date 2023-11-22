@@ -176,7 +176,6 @@ def get_GB_demand(
                 2000 + int(row[0][7:]), ms[row[0][3:6]], int(row[0][:2])
             )
             if dt < d:
-                print("too early")
                 continue
             if d > df:
                 continue
