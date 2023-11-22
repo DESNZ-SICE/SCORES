@@ -5,3 +5,4 @@ stored_model_runs/
 scripts/*.py
 local*
 plottingoutputs/
+credentials.py
