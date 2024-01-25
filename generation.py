@@ -68,6 +68,11 @@ class GenerationModel:
         else:
             self.month_online = month_online
 
+        self.firstdatadatetime = (
+            False  # this is used to check if the first data point has been found
+        )
+        self.loadindex = 0  # this shows us which row to load the data in from
+
         self.date_map = {}
         n = 0
 
@@ -110,9 +115,19 @@ class GenerationModel:
             sf = 1
         for t in range(len(self.power_out)):
             # If no data is available forward fill
-            if self.n_good_points[t] == 0:
-                self.power_out_scaled[t] = self.power_out_scaled[t - 1]
-                continue
+
+            #    _____ _               _      _   _           _     _   _     _       _                  _ _     _
+            #   / ____| |             | |    | | | |         | |   | | | |   (_)     (_)                | (_)   | |
+            #  | |    | |__   ___  ___| | __ | |_| |__   __ _| |_  | |_| |__  _ ___   _ ___  __   ____ _| |_  __| |
+            #  | |    | '_ \ / _ \/ __| |/ / | __| '_ \ / _` | __| | __| '_ \| / __| | / __| \ \ / / _` | | |/ _` |
+            #  | |____| | | |  __/ (__|   <  | |_| | | | (_| | |_  | |_| | | | \__ \ | \__ \  \ V / (_| | | | (_| |
+            #   \_____|_| |_|\___|\___|_|\_\  \__|_| |_|\__,_|\__|  \__|_| |_|_|___/ |_|___/   \_/ \__,_|_|_|\__,_|
+
+            # I'm pretty sure we don't need to forward fill anymore, as we are now using a vectorised approach, so commented out
+
+            # if self.n_good_points[t] == 0:
+            #     self.power_out_scaled[t] = self.power_out_scaled[t - 1]
+            #     continue
             # Otherwise scale by percentage of available data
             # self.power_out_scaled[t] = (self.power_out[t] * sf
             #                             * mp / self.n_good_points[t])
@@ -702,49 +717,88 @@ class OffshoreWindModel(GenerationModel):
             site = self.sites[si]
             site_speeds = []
 
-            rowcounter = 0
-            with open(self.data_path + str(site) + ".csv", "rU") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    rowcounter += 1
-                    stepstartime = time.time()
-                    d = datetime.datetime(int(row[0]), int(row[1]), int(row[2]))
-                    if d not in self.date_map:
-                        continue
-                    if d < self.operationaldatetime[si]:
-                        continue
-                    site_speeds.append(row[6])
-                    dn = self.date_map[d]  # day number (int)
-                    hr = int(row[3])  # hour (int) 0-23
-                    self.n_good_points[dn * 24 + hr] += 1
+            if self.firstdatadatetime == False:
+                with open(self.data_path + str(site) + ".csv", "r") as file:
+                    loadeddata = file.readlines()
+                    firstrow = loadeddata[1].split(",")
+                    #
+                    # MERRA 2 format
+                    #
+                    firstdatadatetime = datetime.datetime.strptime(
+                        firstrow[0], "%d/%m/%Y %H:%M"
+                    )
+                    #
+                    # Met office format (uncomment to use)
+                    #
+                    # firstdatadatetime = datetime.datetime(int(firstrow[0]), int(firstrow[1]), int(firstrow[2]), int(firstrow[3]))
 
-                # the approach ahs been changed to vectorise the calculation of power output
-                # this is done by loading all the wind speeds into an array and then calculating
-                # the power output for each point in the array. This is much faster than the previous
-                # approach of calculating each point individually
-                # The loading code still could be improved, as it is now the bottleneck
-                site_speeds = np.array(site_speeds)
-                site_speeds = site_speeds.astype(float)
-                site_speeds[site_speeds < 0] = 0
+                    self.firstdatadatetime = firstdatadatetime
+                    # find the number of hours between the first date in the data and the first date in the simulation
+                    firstdatadatehours = (
+                        self.startdatetime - firstdatadatetime
+                    ).total_seconds() / 3600
+                    self.loadindex = int(firstdatadatehours)
 
-                # adjusts the wind speeds to hub height
-                site_speeds = site_speeds * np.power(
-                    self.hub_height / self.data_height, self.alpha
-                )
-                site_speeds[site_speeds > v[-1]] = v[-1]  # prevents overload
-                p1s = np.floor(site_speeds / 0.1).astype(
-                    int
-                )  # gets the index of the lower bound of the interpolation
-                p2s = p1s + 1  # gets the index of the upper bound of the interpolation
-                p2s[p2s == len(P)] = p1s[p2s == len(P)]
-                fs = (site_speeds % 0.1) / 0.1
-                poweroutvals = (
-                    fs * Parray[p2s] + (1 - fs) * Parray[p1s]
-                ) * self.n_turbine[
-                    si
-                ]  # interpolates the power output for the entire array
-                self.power_out_array += poweroutvals  # adds the power output to the total power output array
+            operationalindex = int(
+                (self.operationaldatetime[si] - self.firstdatadatetime).total_seconds()
+                / 3600
+            )
+
+            # the range selector index allows us to remove the portion of data within the range, but where the generator was not
+            # operational. It also allows us to handle the case where the operational date is before the first date in the data.
+            if operationalindex < self.loadindex:
+                rangeselectorindex = self.loadindex
+            else:
+                rangeselectorindex = operationalindex
+
+            #
+            # Merra format:
+            #
+            site_speeds = np.loadtxt(
+                self.data_path + str(site) + ".csv",
+                delimiter=",",
+                skiprows=1,
+                usecols=(2),
+            )
+            #
+            # Met office format, uncomment to use: it uses a different column to the MERRA format
+            #
+            # site_speeds = np.loadtxt(
+            #     self.data_path + str(site) + ".csv",
+            #     delimiter=",",
+            #     skiprows=1,
+            #     usecols=(6),
+            # )
+
+            site_speeds = site_speeds[
+                rangeselectorindex : self.loadindex + len(self.n_good_points)
+            ]
+
+            # the approach hass been changed to vectorise the calculation of power output
+            # this is done by loading all the wind speeds into an array and then calculating
+            # the power output for each point in the array. This is much faster than the previous
+            # approach of calculating each point individually
+            site_speeds = np.array(site_speeds)
+            site_speeds = site_speeds.astype(float)
+            site_speeds[site_speeds < 0] = 0
+
+            # adjusts the wind speeds to hub height
+            site_speeds = site_speeds * np.power(
+                self.hub_height / self.data_height, self.alpha
+            )
+            site_speeds[site_speeds > v[-1]] = v[-1]  # prevents overload
+            p1s = np.floor(site_speeds / 0.1).astype(
+                int
+            )  # gets the index of the lower bound of the interpolation
+            p2s = p1s + 1  # gets the index of the upper bound of the interpolation
+            p2s[p2s == len(P)] = p1s[p2s == len(P)]
+            fs = (site_speeds % 0.1) / 0.1
+            poweroutvals = (fs * Parray[p2s] + (1 - fs) * Parray[p1s]) * self.n_turbine[
+                si
+            ]  # interpolates the power output for the entire array
+            self.power_out_array[
+                rangeselectorindex - self.loadindex :
+            ] += poweroutvals  # adds the power output to the total power output array
 
         # the power values have been generated for each point. However, points with missing data are
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
@@ -1252,47 +1306,75 @@ class OnshoreWindModel(GenerationModel):
             P = self.power_curve
 
         Parray = np.array(P)
-
+        loadtimes = []
         for si in range(len(self.sites)):
             site = self.sites[si]
             site_speeds = []
-            with open(self.data_path + str(site) + ".csv", "rU") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    d = datetime.datetime(
-                        int(row[0][:4]), int(row[0][5:7]), int(row[0][8:10])
+            # since extending the data back to 1980, loading has become a real bottleneck. Previous, the data is loaded in, and then
+            # stepped through in series, to check when the datetime matches the first year in the time series, and the first operational
+            # date for the wind turbine. However, assuming we can work out these two numbers, we can just load the data in, and then
+            # slice it to the correct time period. This is much faster.
+            # We assume here that each datafile starts on the same date, which should be the case.
+
+            if self.firstdatadatetime == False:
+                with open(self.data_path + str(site) + ".csv", "r") as file:
+                    loadeddata = file.readlines()
+                    firstrow = loadeddata[1].split(",")
+                    firstdatadatetime = datetime.datetime.strptime(
+                        firstrow[0], "%d/%m/%Y %H:%M"
                     )
-                    if d not in self.date_map:
-                        continue
-                    if d < self.operationaldatetime[si]:
-                        continue
-                    dn = self.date_map[d]  # day number (int)
-                    hr = int(row[1]) - 1  # hour (int) 0-23
-                    site_speeds.append(row[2])
-                    self.n_good_points[dn * 24 + hr] = 1
+                    self.firstdatadatetime = firstdatadatetime
+                    # find the number of hours between the first date in the data and the first date in the simulation
+                    firstdatadatehours = (
+                        self.startdatetime - firstdatadatetime
+                    ).total_seconds() / 3600
+                    self.loadindex = int(firstdatadatehours)
 
-                site_speeds = np.array(site_speeds)
-                site_speeds = site_speeds.astype(float)
-                site_speeds[site_speeds < 0] = 0
+            operationalindex = int(
+                (self.operationaldatetime[si] - self.firstdatadatetime).total_seconds()
+                / 3600
+            )
 
-                # adjusts the wind speeds to hub height
-                site_speeds = site_speeds * np.power(
-                    self.hub_height / self.data_height, self.alpha
-                )
-                site_speeds[site_speeds > v[-1]] = v[-1]  # prevents overload
-                p1s = np.floor(site_speeds / 0.1).astype(
-                    int
-                )  # gets the index of the lower bound of the interpolation
-                p2s = p1s + 1  # gets the index of the upper bound of the interpolation
-                p2s[p2s == len(P)] = p1s[p2s == len(P)]
-                fs = (site_speeds % 0.1) / 0.1
-                poweroutvals = (
-                    fs * Parray[p2s] + (1 - fs) * Parray[p1s]
-                ) * self.n_turbine[
-                    si
-                ]  # interpolates the power output for the entire array
-                self.power_out_array += poweroutvals  # adds the power output to the total power output array
+            # the range selector index allows us to remove the portion of data within the range, but where the generator was not
+            # operational. It also allows us to handle the case where the operational date is before the first date in the data.
+            if operationalindex < self.loadindex:
+                rangeselectorindex = self.loadindex
+            else:
+                rangeselectorindex = operationalindex
+
+            site_speeds = np.loadtxt(
+                self.data_path + str(site) + ".csv",
+                delimiter=",",
+                skiprows=1,
+                usecols=(2),
+            )
+            site_speeds = site_speeds[
+                rangeselectorindex : self.loadindex + len(self.n_good_points)
+            ]
+            # neededdata=splitdata[self.loadindex:self.loadindex+len(self.n_good_points)]
+            # neededdata=splitdata[operationalindex:self.loadindex+len(self.n_good_points)]
+
+            site_speeds = site_speeds.astype(float)
+            site_speeds[site_speeds < 0] = 0
+
+            # adjusts the wind speeds to hub height
+            site_speeds = site_speeds * np.power(
+                self.hub_height / self.data_height, self.alpha
+            )
+            site_speeds[site_speeds > v[-1]] = v[-1]  # prevents overload
+            p1s = np.floor(site_speeds / 0.1).astype(
+                int
+            )  # gets the index of the lower bound of the interpolation
+            p2s = p1s + 1  # gets the index of the upper bound of the interpolation
+            p2s[p2s == len(P)] = p1s[p2s == len(P)]
+            fs = (site_speeds % 0.1) / 0.1
+            poweroutvals = (fs * Parray[p2s] + (1 - fs) * Parray[p1s]) * self.n_turbine[
+                si
+            ]  # interpolates the power output for the entire array
+
+            self.power_out_array[
+                rangeselectorindex - self.loadindex :
+            ] += poweroutvals  # adds the power output to the total power output array
         # the power values have been generated for each point. However, points with missing data are
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
