@@ -556,7 +556,7 @@ class OffshoreWindModel(GenerationModel):
         turbine_size=9.5,
         data_path="",
         hub_height=122,
-        data_height=150,
+        data_height=50,
         alpha=0.143,  # this line added by CQ
         save_path="stored_model_runs/",
         save=True,
