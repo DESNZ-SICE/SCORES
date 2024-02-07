@@ -975,9 +975,7 @@ class SolarModel(GenerationModel):
                 reader = csv.reader(csvfile)
                 next(reader)
                 for row in reader:
-                    d = datetime.datetime(
-                        int(row[0][:4]), int(row[0][5:7]), int(row[0][8:10])
-                    )
+                    d = datetime.datetime.strptime(row[0], "%d/%m/%Y %H:%M")
 
                     if d not in self.date_map:
                         continue
