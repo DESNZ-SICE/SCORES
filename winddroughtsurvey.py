@@ -30,7 +30,7 @@ import time
 
 folder = "C:/Users/SA0011/Documents/data/"  # general folder with all data in it
 offshorewinddatafolder = (
-    folder + "updatedwind/"
+    folder + "merraupdated/"
 )  # subfolder with offshore wind site data
 filename = "Offshore_wind_operational_July_2023.xlsx"
 loadeddata = pd.read_excel(folder + filename)
