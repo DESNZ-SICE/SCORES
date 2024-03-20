@@ -75,3 +75,30 @@ def greatcircledistance(pointa, pointb):
     dist = 6371 * centralangle
 
     return dist
+
+
+def generationtiles(generatorkeys, turbinecapacities):
+    """takes a list of generator keys and a list of turbine capacities, and returns a list of the closest generator key for each turbine capacity
+
+    Parameters
+    -----
+    generatorkeys: list
+        list of generator keys
+
+    turbinecapacities: list
+        list of turbine capacities
+
+    Returns
+    -----
+    closestgenerator: list
+        list of the closest generator key for each turbine capacity
+    """
+
+    tiledgens = np.tile(generatorkeys, (len(turbinecapacities), 1))
+    tiledcaps = np.tile(turbinecapacities, (len(generatorkeys), 1)).T
+
+    closestgenerator = [
+        generatorkeys[i] for i in np.argmin(abs(tiledcaps - tiledgens), axis=1)
+    ]
+
+    return closestgenerator
