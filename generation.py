@@ -1091,6 +1091,7 @@ class SolarModel(GenerationModel):
             for d in self.date_map:
                 if d < self.operationaldatetime[index]:
                     continue
+                self.max_possible_output+=self.plant_capacities[index]*24
                 dn = self.date_map[d]
                 t = 0
                 if sum(site_power[dn * 24 : (dn + 1) * 24]) == 0:
