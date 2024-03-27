@@ -1006,6 +1006,7 @@ class SolarModel(GenerationModel):
             irradiances = irradiances[
                 rangeselectorindex : self.loadindex + len(self.n_good_points)
             ]
+            print(irradiances[0])
 
             irradiances = np.array(irradiances)
             powerout = np.zeros_like(
