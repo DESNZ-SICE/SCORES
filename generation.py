@@ -3,6 +3,7 @@ Created: 08/04/2020 by C.CROZIER, updated by C Quarton and C O'Malley
 
 File description:
 """
+
 import datetime
 import csv
 import copy
@@ -955,7 +956,7 @@ class SolarModel(GenerationModel):
 
         # hourly angles
         hr_angle_deg = np.arange(-172.5, 187.5, 15)
-        hr_angle = np.deg2rad(hr_angle_deg)
+        hr_angle = np.deg2rad(hr_angle_deg).tolist()
 
         # this list will contain the difference in sin(angle) between the
         # start and end of the hour
@@ -968,151 +969,206 @@ class SolarModel(GenerationModel):
 
         # Get the solar data
         for index, site in enumerate(self.sites):
-            site_power = [0.0] * len(self.date_map) * 24
-            # need to keep each site sepeate at first due to smoothing fix
-            site_power = [0] * len(self.n_good_points)
-            with open(self.data_path + str(site) + ".csv", "rU") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    d = datetime.datetime.strptime(row[0], "%d/%m/%Y %H:%M")
+            if self.firstdatadatetime == False:
+                with open(self.data_path + str(site) + ".csv", "r") as file:
+                    loadeddata = file.readlines()
+                    firstrow = loadeddata[1].split(",")
 
-                    if d not in self.date_map:
-                        continue
-                    dn = self.date_map[d]  # day number (int)
-                    hr = int(row[1]) - 1  # hour (int) 0-23
-                    diy = d.timetuple().tm_yday  # day in year 1-365
-
-                    try:
-                        irradiation = float(row[2]) / 3.6  # kJ -> Wh
-                        irradiation = irradiation / 1.051  # merra2 overestimates
-                        # self.n_good_points[dn* 24 + hr] += 1
-                        # I believe this should be =1 not +=1 (Matt)
-                        self.n_good_points[dn * 24 + hr] = 1
-                    except:
-                        continue
-
-                    decl = 23.45 * np.sin(np.deg2rad(360 * (284 + diy) / 365))
-                    decl = np.deg2rad(decl)
-                    lat = site_lat[site]
-
-                    # get incident angle
-                    c_incident = (
-                        np.sin(decl) * np.sin(lat) * np.cos(self.tilt)
-                        - (
-                            np.sin(decl)
-                            * np.cos(lat)
-                            * np.sin(self.tilt)
-                            * np.cos(self.orient)
-                        )
-                        + (
-                            np.cos(decl)
-                            * np.cos(lat)
-                            * np.cos(self.tilt)
-                            * np.cos(hr_angle[hr])
-                        )
-                        + (
-                            np.cos(decl)
-                            * np.sin(lat)
-                            * np.sin(self.tilt)
-                            * np.cos(self.orient)
-                            * np.cos(hr_angle[hr])
-                        )
-                        + (
-                            np.cos(decl)
-                            * np.sin(self.tilt)
-                            * np.sin(self.orient)
-                            * np.sin(hr_angle[hr])
-                        )
-                    )
-                    incident = np.arccos(c_incident)
-                    if incident > np.pi / 2:
-                        continue  # sun behind panel
-
-                    # slight concerns that this is just for horizontal panels?
-                    c_zenith = np.cos(lat) * np.cos(decl) * np.cos(
-                        hr_angle[hr]
-                    ) + np.sin(lat) * np.sin(decl)
-                    zenith = np.arccos(c_zenith)
-                    if zenith > np.pi / 2 or c_zenith < 0:
-                        continue
-
-                    geometric_factor = c_incident / c_zenith
-
-                    # extraterrestial radiation incident on the normal
-                    g_on = solar_constant * (
-                        1 + 0.033 * np.cos(np.deg2rad(360 * diy / 365))
-                    )
-                    irradiation0 = (
-                        (12 / np.pi)
-                        * g_on
-                        * (
-                            np.cos(lat) * np.cos(decl) * diff_hr_angle[hr]
-                            + (np.pi * 15 / 180) * np.sin(lat) * np.sin(decl)
-                        )
+                    firstdatadatetime = datetime.datetime.strptime(
+                        firstrow[0], "%d/%m/%Y %H:%M"
                     )
 
-                    if irradiation0 < 0:
-                        continue
+                    self.firstdatadatetime = firstdatadatetime
+                    # find the number of hours between the first date in the data and the first date in the simulation
+                    firstdatadatehours = (
+                        self.startdatetime - firstdatadatetime
+                    ).total_seconds() / 3600
+                    self.loadindex = int(firstdatadatehours)
 
-                    clearness_index = irradiation / irradiation0
-                    if clearness_index > 1:
-                        irradiation = irradiation0
+            operationalindex = int(
+                (
+                    self.operationaldatetime[index] - self.firstdatadatetime
+                ).total_seconds()
+                / 3600
+            )
 
-                    if clearness_index <= 0.22:
-                        erbs_ratio = 1 - 0.09 * clearness_index
-                    elif clearness_index <= 0.8:
-                        erbs_ratio = (
-                            0.9511
-                            - 0.1604 * clearness_index
-                            + 4.388 * np.power(clearness_index, 2)
-                            - 16.638 * np.power(clearness_index, 3)
-                            + 12.336 * np.power(clearness_index, 4)
-                        )
-                    else:
-                        erbs_ratio = 0.165
+            if operationalindex < self.loadindex:
+                rangeselectorindex = self.loadindex
+            else:
+                rangeselectorindex = operationalindex
 
-                    # got to here
-                    D_beam = (
-                        irradiation - erbs_ratio * irradiation
-                    ) * geometric_factor  # Wh/m2
-                    D_dhi = irradiation * erbs_ratio * (1 + np.cos(self.tilt)) / 2
-                    D = D_beam + D_dhi
+            irradiances = np.loadtxt(
+                self.data_path + str(site) + ".csv",
+                delimiter=",",
+                skiprows=1,
+                usecols=(2),
+            )
+            irradiances = irradiances[
+                rangeselectorindex : self.loadindex + len(self.n_good_points)
+            ]
 
-                    site_power[dn * 24 + hr] += (
-                        D
-                        * plant_area[index]
-                        * self.efficiency
-                        * self.performance_ratio
-                        * 1e-6
-                    )
+            irradiances = np.array(irradiances)
+            powerout = np.zeros_like(
+                irradiances
+            )  # creates zeros array to hold the power
+            irradiances /= 3.6  # kJ -> Wh
+            irradiances /= 1.051  # merra2 overestimates
+            hours = [
+                i % 24 for i in range(len(irradiances))
+            ]  # hours of the day, repeating for each day
+            hourarray = np.array(hours)
+            diy = [
+                i // 24 for i in range(len(irradiances))
+            ]  # day in year, for each hour
+            diy = np.array(diy)
+            hr_angles = hr_angle * int(
+                len(irradiances) / 24
+            )  # repeats the hr_angles for each day
+            hr_angles = np.array(hr_angles)
+            decl = 23.45 * np.sin(np.deg2rad(360 * (284 + diy) / 365))
+            decl = np.deg2rad(decl)
+            lat = site_lat[site]
 
-            # somewhere here I need to do the smoothing fix on final output
-            for d in self.date_map:
-                if d < self.operationaldatetime[index]:
-                    continue
-                self.max_possible_output+=self.plant_capacities[index]*24
-                dn = self.date_map[d]
-                t = 0
-                if sum(site_power[dn * 24 : (dn + 1) * 24]) == 0:
-                    continue
-                while site_power[dn * 24 + t] == 0:
-                    t += 1
-                # sunrise
-                site_power[dn * 24 + t] = 0.1 * site_power[dn * 24 + t + 2]
-                site_power[dn * 24 + t + 1] = 0.33 * site_power[dn * 24 + t + 2]
+            c_incident = (
+                np.sin(decl) * np.sin(lat) * np.cos(self.tilt)
+                - (np.sin(decl) * np.cos(lat) * np.sin(self.tilt) * np.cos(self.orient))
+                + (np.cos(decl) * np.cos(lat) * np.cos(self.tilt) * np.cos(hr_angles))
+                + (
+                    np.cos(decl)
+                    * np.sin(lat)
+                    * np.sin(self.tilt)
+                    * np.cos(self.orient)
+                    * np.cos(hr_angles)
+                )
+                + (
+                    np.cos(decl)
+                    * np.sin(self.tilt)
+                    * np.sin(self.orient)
+                    * np.sin(hr_angles)
+                )
+            )
+            incident = np.arccos(c_incident)
+            # this is the angle between the sun and the panel
+            sunbehindpanel = incident > np.pi / 2
+            # if the sun is behind the panel, the incident angle is greater than 90 degrees
 
-                t = 23
-                while site_power[dn * 24 + t] == 0:
-                    t -= 1
-                # sunset
-                site_power[dn * 24 + t] = 0.1 * site_power[dn * 24 + t - 2]
-                site_power[dn * 24 + t - 1] = (
-                    0.33 * site_power[dn * 24 + t - 2]
-                )  # CQ correction to typo
+            # slight concerns that this is just for horizontal panels?
+            c_zenith = np.cos(lat) * np.cos(decl) * np.cos(hr_angles) + np.sin(
+                lat
+            ) * np.sin(decl)
+            zenith = np.arccos(c_zenith)
+            zentihtoohigh = (
+                zenith > np.pi / 2
+            )  # if the zenith angle is greater than 90, the sun is below the horizon
+            zenithtoolow = (
+                c_zenith < 0
+            )  # if c_zenith is less than zero, the sun is below the horizon
 
-            for t in range(len(site_power)):
-                self.power_out[t] += site_power[t]
+            c_zenith[zenithtoolow] = 1  # need to set these to 1 to avoid divide by zero
+            geometric_factor = c_incident / c_zenith
+
+            sunwrong = (
+                zenithtoolow | sunbehindpanel | zentihtoohigh
+            )  # combines the three conditions
+            geometric_factor[sunwrong] = (
+                0  # set the geometric factor to zero for these values
+            )
+
+            # extraterrestial radiation incident on the normal
+            g_on = solar_constant * (1 + 0.033 * np.cos(np.deg2rad(360 * diy / 365)))
+            irradiation0 = (
+                (12 / np.pi)
+                * g_on
+                * (
+                    np.cos(lat) * np.cos(decl) * hr_angles
+                    + (np.pi * 15 / 180) * np.sin(lat) * np.sin(decl)
+                )
+            )
+
+            # we don't want to divide by zero, but sometimes the irradiation0 is zero
+            # in that case, we will find the index where this happens, set irradiation0 to 1,
+            # and then subsequently set the power out to zero
+
+            noirradiance = irradiation0 < 0
+            irradiation0[noirradiance] = 1
+
+            clearness_index = irradiances / irradiation0
+            # finds indeces where the clearness index is greater than 1
+            clearness1mask = np.where(clearness_index > 1)
+            irradiances[clearness1mask] = irradiation0[clearness1mask]
+
+            erbs_ratio = np.ones_like(clearness_index) * 0.165
+            erbs_ratio[clearness_index <= 0.22] = (
+                1 - 0.09 * clearness_index[clearness_index <= 0.22]
+            )
+            erbs_ratio[clearness_index <= 0.8] = (
+                0.9511
+                - 0.1604 * clearness_index[clearness_index <= 0.8]
+                + 4.388 * np.power(clearness_index[clearness_index <= 0.8], 2)
+                - 16.638 * np.power(clearness_index[clearness_index <= 0.8], 3)
+                + 12.336 * np.power(clearness_index[clearness_index <= 0.8], 4)
+            )
+
+            D_beam = (
+                irradiances - erbs_ratio * irradiances
+            ) * geometric_factor  # Wh/m2
+            D_dhi = irradiances * erbs_ratio * (1 + np.cos(self.tilt)) / 2
+            D = D_beam + D_dhi
+
+            poweroutvals = (
+                D * plant_area[index] * self.efficiency * self.performance_ratio * 1e-6
+            )
+            poweroutvals[sunwrong] = 0
+            poweroutvals[noirradiance] = 0
+
+            sunrises = []
+            sunsets = []
+            night = True
+            for j in range(len(poweroutvals)):
+                power = poweroutvals[j]
+                if power != 0 and night:
+                    sunrises.append(j)
+                    night = False
+                if power == 0 and not night:
+                    sunsets.append(j)
+                    night = True
+
+            sunrisearray = np.array(sunrises)
+            sunsetarray = np.array(sunsets)
+            dif = sunsetarray - sunrisearray
+            print(np.max(dif))
+            self.power_out_array[rangeselectorindex - self.loadindex :] += poweroutvals
+            self.power_out = self.power_out_array.tolist()
+            print(self.plant_capacities)
+            self.max_possible_output += self.plant_capacities[index] * len(poweroutvals)
+            # this needs checking
+
+            # # somewhere here I need to do the smoothing fix on final output
+            # for d in self.date_map:
+            #     if d < self.operationaldatetime[index]:
+            #         continue
+            #     self.max_possible_output += self.plant_capacities[index] * 24
+            #     dn = self.date_map[d]
+            #     t = 0
+            #     if sum(site_power[dn * 24 : (dn + 1) * 24]) == 0:
+            #         continue
+            #     while site_power[dn * 24 + t] == 0:
+            #         t += 1
+            #     # sunrise
+            #     site_power[dn * 24 + t] = 0.1 * site_power[dn * 24 + t + 2]
+            #     site_power[dn * 24 + t + 1] = 0.33 * site_power[dn * 24 + t + 2]
+
+            #     t = 23
+            #     while site_power[dn * 24 + t] == 0:
+            #         t -= 1
+            #     # sunset
+            #     site_power[dn * 24 + t] = 0.1 * site_power[dn * 24 + t - 2]
+            #     site_power[dn * 24 + t - 1] = (
+            #         0.33 * site_power[dn * 24 + t - 2]
+            #     )  # CQ correction to typo
+
+            # for t in range(len(site_power)):
+            #     self.power_out[t] += site_power[t]
         # the power values have been generated for each point. However, points with missing data are
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
