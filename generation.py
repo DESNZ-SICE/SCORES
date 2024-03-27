@@ -1029,6 +1029,8 @@ class SolarModel(GenerationModel):
             decl = 23.45 * np.sin(np.deg2rad(360 * (284 + diy) / 365))
             decl = np.deg2rad(decl)
             lat = site_lat[site]
+            print("Decl")
+            print(decl[0:24])
 
             c_incident = (
                 np.sin(decl) * np.sin(lat) * np.cos(self.tilt)
@@ -1048,6 +1050,8 @@ class SolarModel(GenerationModel):
                     * np.sin(hr_angles)
                 )
             )
+            print("C incident")
+            print(c_incident[0:24])
             incident = np.arccos(c_incident)
             # this is the angle between the sun and the panel
             sunbehindpanel = incident > np.pi / 2
@@ -1057,6 +1061,8 @@ class SolarModel(GenerationModel):
             c_zenith = np.cos(lat) * np.cos(decl) * np.cos(hr_angles) + np.sin(
                 lat
             ) * np.sin(decl)
+            print("C zenith")
+            print(c_zenith[0:24])
             zenith = np.arccos(c_zenith)
             zentihtoohigh = (
                 zenith > np.pi / 2
