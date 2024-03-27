@@ -983,7 +983,7 @@ class SolarModel(GenerationModel):
                     dn = self.date_map[d]  # day number (int)
                     hr = int(row[1]) - 1  # hour (int) 0-23
                     diy = d.timetuple().tm_yday  # day in year 1-365
-
+                    print(row[2])
                     try:
                         irradiation = float(row[2]) / 3.6  # kJ -> Wh
                         irradiation = irradiation / 1.051  # merra2 overestimates
