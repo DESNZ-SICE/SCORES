@@ -983,7 +983,7 @@ class SolarModel(GenerationModel):
                     dn = self.date_map[d]  # day number (int)
                     hr = int(row[1]) - 1  # hour (int) 0-23
                     diy = d.timetuple().tm_yday  # day in year 1-365
-                    print(row[2])
+
                     try:
                         irradiation = float(row[2]) / 3.6  # kJ -> Wh
                         irradiation = irradiation / 1.051  # merra2 overestimates
@@ -994,6 +994,8 @@ class SolarModel(GenerationModel):
                         continue
 
                     decl = 23.45 * np.sin(np.deg2rad(360 * (284 + diy) / 365))
+                    print(f"Hr:{hr}")
+                    print(f"decl:{decl}")
                     decl = np.deg2rad(decl)
                     lat = site_lat[site]
 
@@ -1026,6 +1028,7 @@ class SolarModel(GenerationModel):
                             * np.sin(hr_angle[hr])
                         )
                     )
+                    print(f"c_incident:{c_incident}")
                     incident = np.arccos(c_incident)
                     if incident > np.pi / 2:
                         continue  # sun behind panel
@@ -1034,6 +1037,7 @@ class SolarModel(GenerationModel):
                     c_zenith = np.cos(lat) * np.cos(decl) * np.cos(
                         hr_angle[hr]
                     ) + np.sin(lat) * np.sin(decl)
+                    print(f"c_zenith:{c_zenith}")
                     zenith = np.arccos(c_zenith)
                     if zenith > np.pi / 2 or c_zenith < 0:
                         continue
