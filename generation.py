@@ -1054,6 +1054,9 @@ class SolarModel(GenerationModel):
                             + (np.pi * 15 / 180) * np.sin(lat) * np.sin(decl)
                         )
                     )
+                    print("Hour: ", hr)
+                    #print all the variables which went into irradiation0, on one line
+                    print(f"Decl: {decl}, Lat: {lat}, Diff_hr_angle: {diff_hr_angle[hr]}, g_on: {g_on}")
 
                     if irradiation0 < 0:
                         continue
@@ -1081,10 +1084,7 @@ class SolarModel(GenerationModel):
                     ) * geometric_factor  # Wh/m2
                     D_dhi = irradiation * erbs_ratio * (1 + np.cos(self.tilt)) / 2
                     D = D_beam + D_dhi
-                    print(
-                        f"Hour: {hr}, clearness index {clearness_index},  erbs_ratio: {erbs_ratio}, irradiation: {irradiation}"
-                    )
-
+ 
                     if hr > 14:
                         quit()
                     site_power[dn * 24 + hr] += (
