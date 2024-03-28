@@ -995,8 +995,9 @@ class SolarModel(GenerationModel):
                     print(diy)
                     decl = 23.45 * np.sin(np.deg2rad(360 * (284 + diy) / 365))
                     print(f"Hr:{hr}")
-                    print(f"decl:{decl}")
                     decl = np.deg2rad(decl)
+                    print(f"decl:{decl}")
+
                     lat = site_lat[site]
 
                     # get incident angle
