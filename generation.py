@@ -962,6 +962,10 @@ class SolarModel(GenerationModel):
         )
         diff_hr_angle = diff_hr_angle.tolist()
         hr_angle = hr_angle.tolist()
+        print("hr_angle:")
+        print(hr_angle)
+        print("diff_hr_angle:")
+        print(diff_hr_angle)
         # this list will contain the difference in sin(angle) between the
         # start and end of the hour
 
@@ -1123,11 +1127,11 @@ class SolarModel(GenerationModel):
 
             poweroutvals[sunwrong] = 0
             poweroutvals[noirradiance] = 0
-            #the previous code smoothed the ramp up and down rates. We will do the same, using the same technique
-            #to smooth the data, we find the first and last times in each day where the power is non-zero
-            #The power 2 hours after and before these times is then used as a baseline
-            #the sunrise and sunset times are then set to 10% of the power 2 hours after and before these times
-            #the times in between are then set to 33% of the power 2 hours after and before these times
+            # the previous code smoothed the ramp up and down rates. We will do the same, using the same technique
+            # to smooth the data, we find the first and last times in each day where the power is non-zero
+            # The power 2 hours after and before these times is then used as a baseline
+            # the sunrise and sunset times are then set to 10% of the power 2 hours after and before these times
+            # the times in between are then set to 33% of the power 2 hours after and before these times
             sunrises = []
             sunsets = []
             night = True
@@ -1142,14 +1146,14 @@ class SolarModel(GenerationModel):
 
             sunrisearray = np.array(sunrises)
             sunsetarray = np.array(sunsets)
-            sunrisingselector=sunrisearray+1
-            sunrisenselectors=sunrisearray+2
-            sunsettingselector=sunsetarray-1
-            sunsetselectors=sunsetarray-2
-            poweroutvals[sunrisearray]=0.1*poweroutvals[sunrisenselectors]
-            poweroutvals[sunrisingselector]=0.33*poweroutvals[sunrisenselectors]
-            poweroutvals[sunsetarray]=0.1*poweroutvals[sunsetselectors]
-            poweroutvals[sunsettingselector]=0.33*poweroutvals[sunsetselectors]
+            sunrisingselector = sunrisearray + 1
+            sunrisenselectors = sunrisearray + 2
+            sunsettingselector = sunsetarray - 1
+            sunsetselectors = sunsetarray - 2
+            poweroutvals[sunrisearray] = 0.1 * poweroutvals[sunrisenselectors]
+            poweroutvals[sunrisingselector] = 0.33 * poweroutvals[sunrisenselectors]
+            poweroutvals[sunsetarray] = 0.1 * poweroutvals[sunsetselectors]
+            poweroutvals[sunsettingselector] = 0.33 * poweroutvals[sunsetselectors]
             self.power_out_array[rangeselectorindex - self.loadindex :] += poweroutvals
             self.power_out = self.power_out_array.tolist()
             self.max_possible_output += self.plant_capacities[index] * len(poweroutvals)
