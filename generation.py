@@ -1079,12 +1079,6 @@ class SolarModel(GenerationModel):
 
             # extraterrestial radiation incident on the normal
             g_on = solar_constant * (1 + 0.033 * np.cos(np.deg2rad(360 * diy / 365)))
-            print("g_on")
-            print(g_on[0:24])
-            print("lat: ", lat)
-            print("decl: ", decl[0:24])
-            print("hr_angles: ", hr_angles[0:24])
-
             irradiation0 = (
                 (12 / np.pi)
                 * g_on
@@ -1097,9 +1091,6 @@ class SolarModel(GenerationModel):
             # we don't want to divide by zero, but sometimes the irradiation0 is zero
             # in that case, we will find the index where this happens, set irradiation0 to 1,
             # and then subsequently set the power out to zero
-            print("irradiation0")
-            print(irradiation0[0:24])
-
             noirradiance = irradiation0 < 0
             irradiation0[noirradiance] = 1
 
@@ -1119,23 +1110,24 @@ class SolarModel(GenerationModel):
                 - 16.638 * np.power(clearness_index[clearness_index <= 0.8], 3)
                 + 12.336 * np.power(clearness_index[clearness_index <= 0.8], 4)
             )
-            print("erbs_ratio")
-            print(erbs_ratio[0:24])
+
             D_beam = (
                 irradiances - erbs_ratio * irradiances
             ) * geometric_factor  # Wh/m2
             D_dhi = irradiances * erbs_ratio * (1 + np.cos(self.tilt)) / 2
             D = D_beam + D_dhi
-            print("D")
-            print(D[0:24])
+
             poweroutvals = (
                 D * plant_area[index] * self.efficiency * self.performance_ratio * 1e-6
             )
 
             poweroutvals[sunwrong] = 0
             poweroutvals[noirradiance] = 0
-            print("poweroutvals")
-            print(poweroutvals[0:24])
+            #the previous code smoothed the ramp up and down rates. We will do the same, using the same technique
+            #to smooth the data, we find the first and last times in each day where the power is non-zero
+            #The power 2 hours after and before these times is then used as a baseline
+            #the sunrise and sunset times are then set to 10% of the power 2 hours after and before these times
+            #the times in between are then set to 33% of the power 2 hours after and before these times
             sunrises = []
             sunsets = []
             night = True
@@ -1150,11 +1142,16 @@ class SolarModel(GenerationModel):
 
             sunrisearray = np.array(sunrises)
             sunsetarray = np.array(sunsets)
-            dif = sunsetarray - sunrisearray
-            print(np.max(dif))
+            sunrisingselector=sunrisearray+1
+            sunrisenselectors=sunrisearray+2
+            sunsettingselector=sunsetarray-1
+            sunsetselectors=sunsetarray-2
+            poweroutvals[sunrisearray]=0.1*poweroutvals[sunrisenselectors]
+            poweroutvals[sunrisingselector]=0.33*poweroutvals[sunrisenselectors]
+            poweroutvals[sunsetarray]=0.1*poweroutvals[sunsetselectors]
+            poweroutvals[sunsettingselector]=0.33*poweroutvals[sunsetselectors]
             self.power_out_array[rangeselectorindex - self.loadindex :] += poweroutvals
             self.power_out = self.power_out_array.tolist()
-            print(self.plant_capacities)
             self.max_possible_output += self.plant_capacities[index] * len(poweroutvals)
             # this needs checking
 
