@@ -1152,6 +1152,8 @@ class SolarModel(GenerationModel):
             poweroutvals[sunsettingselector] = 0.33 * poweroutvals[sunsetselectors]
             self.power_out_array[rangeselectorindex - self.loadindex :] += poweroutvals
             self.power_out = self.power_out_array.tolist()
+            for i in range(24*4):
+                print(f"{i} {poweroutvals[i]}")
             self.max_possible_output += self.plant_capacities[index] * len(poweroutvals)
             # this needs checking
 
