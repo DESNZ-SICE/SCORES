@@ -1092,7 +1092,8 @@ class SolarModel(GenerationModel):
                         * self.performance_ratio
                         * 1e-6
                     )
-
+            for i in range(24 * 4):
+                print(f"{i}: {site_power[i]}")
             # somewhere here I need to do the smoothing fix on final output
             for d in self.date_map:
                 if d < self.operationaldatetime[index]:
@@ -1117,8 +1118,6 @@ class SolarModel(GenerationModel):
                     0.33 * site_power[dn * 24 + t - 2]
                 )  # CQ correction to typo
 
-            for i in range(24 * 4):
-                print(f"{i}: {site_power[i]}")
             for t in range(len(site_power)):
                 self.power_out[t] += site_power[t]
         # the power values have been generated for each point. However, points with missing data are
