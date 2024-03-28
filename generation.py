@@ -992,11 +992,10 @@ class SolarModel(GenerationModel):
                         self.n_good_points[dn * 24 + hr] = 1
                     except:
                         continue
-                    print(diy)
                     decl = 23.45 * np.sin(np.deg2rad(360 * (284 + diy) / 365))
                     print(f"Hr:{hr}")
+                    print(irradiation)
                     decl = np.deg2rad(decl)
- 
 
                     lat = site_lat[site]
 
