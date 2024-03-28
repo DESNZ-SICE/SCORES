@@ -1118,7 +1118,7 @@ class SolarModel(GenerationModel):
             D = D_beam + D_dhi
 
             for i in range(24):
-                print(f"hour: {i} Erbs: {erbs_ratio[i]} Geo: {geometric_factor[i]} irradiances: {irradiances[i]}")
+                print(f"hour: {i} irradiation0: {irradiation0[i]}")
             poweroutvals = (
                 D * plant_area[index] * self.efficiency * self.performance_ratio * 1e-6
             )
