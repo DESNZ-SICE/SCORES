@@ -983,7 +983,7 @@ class SolarModel(GenerationModel):
                     dn = self.date_map[d]  # day number (int)
                     hr = int(row[1]) - 1  # hour (int) 0-23
                     diy = d.timetuple().tm_yday  # day in year 1-365
-
+                    print("Day in year: ", diy)
                     try:
                         irradiation = float(row[2]) / 3.6  # kJ -> Wh
                         irradiation = irradiation / 1.051  # merra2 overestimates
@@ -1057,7 +1057,8 @@ class SolarModel(GenerationModel):
                     print("Hour: ", hr)
                     print("Irradiation: ", irradiation0)
                     # print all the variables which went into irradiation0, on one line
-
+                    if diy>5:
+                        quit()
                     if irradiation0 < 0:
                         continue
 
@@ -1092,8 +1093,7 @@ class SolarModel(GenerationModel):
                         * self.performance_ratio
                         * 1e-6
                     )
-            for i in range(24 * 4):
-                print(f"{i}: {site_power[i]}")
+
             # somewhere here I need to do the smoothing fix on final output
             for d in self.date_map:
                 if d < self.operationaldatetime[index]:
@@ -1117,7 +1117,8 @@ class SolarModel(GenerationModel):
                 site_power[dn * 24 + t - 1] = (
                     0.33 * site_power[dn * 24 + t - 2]
                 )  # CQ correction to typo
-
+            for i in range(24 * 4):
+                print(f"{i}: {site_power[i]}")
             for t in range(len(site_power)):
                 self.power_out[t] += site_power[t]
         # the power values have been generated for each point. However, points with missing data are
