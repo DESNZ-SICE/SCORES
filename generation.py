@@ -1117,6 +1117,8 @@ class SolarModel(GenerationModel):
             D_dhi = irradiances * erbs_ratio * (1 + np.cos(self.tilt)) / 2
             D = D_beam + D_dhi
 
+            for i in range(24):
+                print(f"hour: {i} Erbs: {erbs_ratio[i]} Geo: {geometric_factor[i]} irradiances: {irradiances[i]}")
             poweroutvals = (
                 D * plant_area[index] * self.efficiency * self.performance_ratio * 1e-6
             )
@@ -1152,7 +1154,7 @@ class SolarModel(GenerationModel):
             poweroutvals[sunsettingselector] = 0.33 * poweroutvals[sunsetselectors]
             self.power_out_array[rangeselectorindex - self.loadindex :] += poweroutvals
             self.power_out = self.power_out_array.tolist()
-            for i in range(24*4):
+            for i in range(24 * 4):
                 print(f"{i} {poweroutvals[i]}")
             self.max_possible_output += self.plant_capacities[index] * len(poweroutvals)
             # this needs checking
