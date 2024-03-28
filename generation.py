@@ -1144,6 +1144,8 @@ class SolarModel(GenerationModel):
 
             sunrisearray = np.array(sunrises)
             sunsetarray = np.array(sunsets)
+            for i in range(24 * 4):
+                print(f"{i} {poweroutvals[i]}")
             sunrisingselector = sunrisearray + 1
             sunrisenselectors = sunrisearray + 2
             sunsettingselector = sunsetarray - 1
