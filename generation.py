@@ -1047,6 +1047,8 @@ class SolarModel(GenerationModel):
                     g_on = solar_constant * (
                         1 + 0.033 * np.cos(np.deg2rad(360 * diy / 365))
                     )
+                    print(f"g_on:{g_on}")
+                    print(f"hr angle: {diff_hr_angle[hr]}")
                     irradiation0 = (
                         (12 / np.pi)
                         * g_on
