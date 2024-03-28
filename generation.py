@@ -1117,8 +1117,9 @@ class SolarModel(GenerationModel):
             D_dhi = irradiances * erbs_ratio * (1 + np.cos(self.tilt)) / 2
             D = D_beam + D_dhi
 
-            for i in range(24):
-                print(f"hour: {i} irradiation0: {irradiation0[i]}")
+            for i in range(96):
+                print("Day: ", diy[i])
+                print(f"hour: {i%24} irradiation0: {irradiation0[i]}")
             poweroutvals = (
                 D * plant_area[index] * self.efficiency * self.performance_ratio * 1e-6
             )
