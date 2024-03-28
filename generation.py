@@ -993,8 +993,7 @@ class SolarModel(GenerationModel):
                     except:
                         continue
                     decl = 23.45 * np.sin(np.deg2rad(360 * (284 + diy) / 365))
-                    print(f"Hr:{hr}")
-                    print(irradiation)
+
                     decl = np.deg2rad(decl)
 
                     lat = site_lat[site]
@@ -1046,8 +1045,7 @@ class SolarModel(GenerationModel):
                     g_on = solar_constant * (
                         1 + 0.033 * np.cos(np.deg2rad(360 * diy / 365))
                     )
-                    print(f"g_on:{g_on}")
-                    print(f"hr angle: {diff_hr_angle[hr]}")
+
                     irradiation0 = (
                         (12 / np.pi)
                         * g_on
@@ -1059,7 +1057,6 @@ class SolarModel(GenerationModel):
 
                     if irradiation0 < 0:
                         continue
-                    print(f"irradiation0:{irradiation0}")
                     clearness_index = irradiation / irradiation0
                     if clearness_index > 1:
                         irradiation = irradiation0
@@ -1077,14 +1074,15 @@ class SolarModel(GenerationModel):
                     else:
                         erbs_ratio = 0.165
 
-                    print(f"erbs_ratio:{erbs_ratio}")
                     # got to here
                     D_beam = (
                         irradiation - erbs_ratio * irradiation
                     ) * geometric_factor  # Wh/m2
                     D_dhi = irradiation * erbs_ratio * (1 + np.cos(self.tilt)) / 2
                     D = D_beam + D_dhi
-                    print(f"D:{D}")
+                    print(f"Hour: {hr}, D: {D}, D_beam: {D_beam}, D_dhi: {D_dhi}")
+                    if hr>22: 
+                        quit()
                     site_power[dn * 24 + hr] += (
                         D
                         * plant_area[index]
@@ -1092,8 +1090,8 @@ class SolarModel(GenerationModel):
                         * self.performance_ratio
                         * 1e-6
                     )
-                    print(f"site_power:{site_power[dn * 24 + hr]}")
-
+            for i in range(24*4):
+                print(f"{i}: {site_power[i]}")
             # somewhere here I need to do the smoothing fix on final output
             for d in self.date_map:
                 if d < self.operationaldatetime[index]:
