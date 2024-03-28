@@ -996,7 +996,7 @@ class SolarModel(GenerationModel):
                     decl = 23.45 * np.sin(np.deg2rad(360 * (284 + diy) / 365))
                     print(f"Hr:{hr}")
                     decl = np.deg2rad(decl)
-                    print(f"decl:{decl}")
+ 
 
                     lat = site_lat[site]
 
@@ -1029,7 +1029,6 @@ class SolarModel(GenerationModel):
                             * np.sin(hr_angle[hr])
                         )
                     )
-                    print(f"c_incident:{c_incident}")
                     incident = np.arccos(c_incident)
                     if incident > np.pi / 2:
                         continue  # sun behind panel
@@ -1038,7 +1037,6 @@ class SolarModel(GenerationModel):
                     c_zenith = np.cos(lat) * np.cos(decl) * np.cos(
                         hr_angle[hr]
                     ) + np.sin(lat) * np.sin(decl)
-                    print(f"c_zenith:{c_zenith}")
                     zenith = np.arccos(c_zenith)
                     if zenith > np.pi / 2 or c_zenith < 0:
                         continue
@@ -1060,7 +1058,7 @@ class SolarModel(GenerationModel):
 
                     if irradiation0 < 0:
                         continue
-
+                    print(f"irradiation0:{irradiation0}")
                     clearness_index = irradiation / irradiation0
                     if clearness_index > 1:
                         irradiation = irradiation0
@@ -1078,13 +1076,14 @@ class SolarModel(GenerationModel):
                     else:
                         erbs_ratio = 0.165
 
+                    print(f"erbs_ratio:{erbs_ratio}")
                     # got to here
                     D_beam = (
                         irradiation - erbs_ratio * irradiation
                     ) * geometric_factor  # Wh/m2
                     D_dhi = irradiation * erbs_ratio * (1 + np.cos(self.tilt)) / 2
                     D = D_beam + D_dhi
-
+                    print(f"D:{D}")
                     site_power[dn * 24 + hr] += (
                         D
                         * plant_area[index]
@@ -1092,6 +1091,7 @@ class SolarModel(GenerationModel):
                         * self.performance_ratio
                         * 1e-6
                     )
+                    print(f"site_power:{site_power[dn * 24 + hr]}")
 
             # somewhere here I need to do the smoothing fix on final output
             for d in self.date_map:
