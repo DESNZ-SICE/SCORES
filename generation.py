@@ -1026,6 +1026,8 @@ class SolarModel(GenerationModel):
                 len(irradiances) / 24
             )  # repeats the hr_angles for each day
             hr_angles = np.array(hr_angles)
+            print("DIY")
+            print(diy[0:24])
             decl = 23.45 * np.sin(np.deg2rad(360 * (284 + diy) / 365))
             decl = np.deg2rad(decl)
             lat = site_lat[site]
