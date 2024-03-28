@@ -1057,6 +1057,7 @@ class SolarModel(GenerationModel):
 
                     if irradiation0 < 0:
                         continue
+
                     clearness_index = irradiation / irradiation0
                     if clearness_index > 1:
                         irradiation = irradiation0
@@ -1074,14 +1075,17 @@ class SolarModel(GenerationModel):
                     else:
                         erbs_ratio = 0.165
 
-                    # got to here
+                    # got to herea
                     D_beam = (
                         irradiation - erbs_ratio * irradiation
                     ) * geometric_factor  # Wh/m2
                     D_dhi = irradiation * erbs_ratio * (1 + np.cos(self.tilt)) / 2
                     D = D_beam + D_dhi
-                    print(f"Hour: {hr}, D: {D}, D_beam: {D_beam}, D_dhi: {D_dhi}")
-                    if hr>22: 
+                    print(
+                        f"Hour: {hr}, clearness index {clearness_index},  erbs_ratio: {erbs_ratio}, irradiation: {irradiation}"
+                    )
+
+                    if hr > 14:
                         quit()
                     site_power[dn * 24 + hr] += (
                         D
@@ -1090,7 +1094,7 @@ class SolarModel(GenerationModel):
                         * self.performance_ratio
                         * 1e-6
                     )
-            for i in range(24*4):
+            for i in range(24 * 4):
                 print(f"{i}: {site_power[i]}")
             # somewhere here I need to do the smoothing fix on final output
             for d in self.date_map:
