@@ -956,16 +956,14 @@ class SolarModel(GenerationModel):
 
         # hourly angles
         hr_angle_deg = np.arange(-172.5, 187.5, 15)
-        hr_angle = np.deg2rad(hr_angle_deg).tolist()
-
+        hr_angle = np.deg2rad(hr_angle_deg)
+        diff_hr_angle = np.sin(np.deg2rad(hr_angle_deg + 7.5)) - np.sin(
+            np.deg2rad(hr_angle_deg - 7.5)
+        )
+        diff_hr_angle = diff_hr_angle.tolist()
+        hr_angle = hr_angle.tolist()
         # this list will contain the difference in sin(angle) between the
         # start and end of the hour
-        diff_hr_angle = []
-        for t in range(24):
-            diff_hr_angle.append(
-                np.sin(np.deg2rad(hr_angle_deg[t] + 7.5))
-                - np.sin(np.deg2rad(hr_angle_deg[t] - 7.5))
-            )
 
         # Get the solar data
         for index, site in enumerate(self.sites):
@@ -1026,6 +1024,9 @@ class SolarModel(GenerationModel):
                 len(irradiances) / 24
             )  # repeats the hr_angles for each day
             hr_angles = np.array(hr_angles)
+
+            diff_hr_angle = diff_hr_angle * int(len(irradiances) / 24)
+            diff_hr_angle = np.array(diff_hr_angle)
             decl = 23.45 * np.sin(np.deg2rad(360 * (284 + diy) / 365))
             decl = np.deg2rad(decl)
             lat = site_lat[site]
@@ -1083,12 +1084,12 @@ class SolarModel(GenerationModel):
             print("lat: ", lat)
             print("decl: ", decl[0:24])
             print("hr_angles: ", hr_angles[0:24])
-            
+
             irradiation0 = (
                 (12 / np.pi)
                 * g_on
                 * (
-                    np.cos(lat) * np.cos(decl) * hr_angles
+                    np.cos(lat) * np.cos(decl) * diff_hr_angle
                     + (np.pi * 15 / 180) * np.sin(lat) * np.sin(decl)
                 )
             )
