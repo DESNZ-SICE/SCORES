@@ -962,10 +962,6 @@ class SolarModel(GenerationModel):
         )
         diff_hr_angle = diff_hr_angle.tolist()
         hr_angle = hr_angle.tolist()
-        print("hr_angle:")
-        print(hr_angle)
-        print("diff_hr_angle:")
-        print(diff_hr_angle)
         # this list will contain the difference in sin(angle) between the
         # start and end of the hour
 
