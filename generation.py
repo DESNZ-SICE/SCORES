@@ -1017,7 +1017,7 @@ class SolarModel(GenerationModel):
             ]  # hours of the day, repeating for each day
             hourarray = np.array(hours)
             diy = [
-                i // 24 for i in range(len(irradiances))
+                i // 24 + 1 for i in range(len(irradiances))
             ]  # day in year, for each hour
             diy = np.array(diy)
             hr_angles = hr_angle * int(
