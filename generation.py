@@ -1078,6 +1078,12 @@ class SolarModel(GenerationModel):
 
             # extraterrestial radiation incident on the normal
             g_on = solar_constant * (1 + 0.033 * np.cos(np.deg2rad(360 * diy / 365)))
+            print("g_on")
+            print(g_on[0:24])
+            print("lat: ", lat)
+            print("decl: ", decl[0:24])
+            print("hr_angles: ", hr_angles[0:24])
+            
             irradiation0 = (
                 (12 / np.pi)
                 * g_on
