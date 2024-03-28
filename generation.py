@@ -1139,13 +1139,12 @@ class SolarModel(GenerationModel):
                     sunrises.append(j)
                     night = False
                 if power == 0 and not night:
-                    sunsets.append(j)
+                    sunsets.append(j - 1)
                     night = True
-
+            print(sunrises[0:4])
+            print(sunsets[0:4])
             sunrisearray = np.array(sunrises)
             sunsetarray = np.array(sunsets)
-            for i in range(24 * 4):
-                print(f"{i} {poweroutvals[i]}")
             sunrisingselector = sunrisearray + 1
             sunrisenselectors = sunrisearray + 2
             sunsettingselector = sunsetarray - 1
