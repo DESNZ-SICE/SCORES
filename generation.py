@@ -1026,13 +1026,9 @@ class SolarModel(GenerationModel):
                 len(irradiances) / 24
             )  # repeats the hr_angles for each day
             hr_angles = np.array(hr_angles)
-            print("DIY")
-            print(diy[0:24])
             decl = 23.45 * np.sin(np.deg2rad(360 * (284 + diy) / 365))
             decl = np.deg2rad(decl)
             lat = site_lat[site]
-            print("Decl")
-            print(decl[0:24])
 
             c_incident = (
                 np.sin(decl) * np.sin(lat) * np.cos(self.tilt)
@@ -1052,8 +1048,7 @@ class SolarModel(GenerationModel):
                     * np.sin(hr_angles)
                 )
             )
-            print("C incident")
-            print(c_incident[0:24])
+
             incident = np.arccos(c_incident)
             # this is the angle between the sun and the panel
             sunbehindpanel = incident > np.pi / 2
@@ -1063,8 +1058,6 @@ class SolarModel(GenerationModel):
             c_zenith = np.cos(lat) * np.cos(decl) * np.cos(hr_angles) + np.sin(
                 lat
             ) * np.sin(decl)
-            print("C zenith")
-            print(c_zenith[0:24])
             zenith = np.arccos(c_zenith)
             zentihtoohigh = (
                 zenith > np.pi / 2
@@ -1097,6 +1090,8 @@ class SolarModel(GenerationModel):
             # we don't want to divide by zero, but sometimes the irradiation0 is zero
             # in that case, we will find the index where this happens, set irradiation0 to 1,
             # and then subsequently set the power out to zero
+            print("irradiation0")
+            print(irradiation0[0:24])
 
             noirradiance = irradiation0 < 0
             irradiation0[noirradiance] = 1
@@ -1117,19 +1112,23 @@ class SolarModel(GenerationModel):
                 - 16.638 * np.power(clearness_index[clearness_index <= 0.8], 3)
                 + 12.336 * np.power(clearness_index[clearness_index <= 0.8], 4)
             )
-
+            print("erbs_ratio")
+            print(erbs_ratio[0:24])
             D_beam = (
                 irradiances - erbs_ratio * irradiances
             ) * geometric_factor  # Wh/m2
             D_dhi = irradiances * erbs_ratio * (1 + np.cos(self.tilt)) / 2
             D = D_beam + D_dhi
-
+            print("D")
+            print(D[0:24])
             poweroutvals = (
                 D * plant_area[index] * self.efficiency * self.performance_ratio * 1e-6
             )
+
             poweroutvals[sunwrong] = 0
             poweroutvals[noirradiance] = 0
-
+            print("poweroutvals")
+            print(poweroutvals[0:24])
             sunrises = []
             sunsets = []
             night = True
