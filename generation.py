@@ -544,8 +544,8 @@ class OffshoreWindModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        fixed_cost=225618,
-        variable_cost=3,
+        fixed_cost=177843,
+        variable_cost=1,
         tilt=5,
         air_density=1.23,
         rotor_diameter=164,
@@ -827,7 +827,7 @@ class SolarModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        fixed_cost=42000,
+        fixed_cost=26975,
         variable_cost=0,
         orient=0,
         tilt=22,
@@ -1057,7 +1057,7 @@ class SolarModel(GenerationModel):
                     print("Hour: ", hr)
                     print("Irradiation: ", irradiation0)
                     # print all the variables which went into irradiation0, on one line
-                    if diy>5:
+                    if diy > 5:
                         quit()
                     if irradiation0 < 0:
                         continue
@@ -1137,7 +1137,7 @@ class OnshoreWindModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        fixed_cost=115561,
+        fixed_cost=114529,
         variable_cost=6,
         tilt=5,
         air_density=1.23,
