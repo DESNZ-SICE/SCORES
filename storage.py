@@ -7,6 +7,7 @@ storage and an aggregated portfolio of storage assets.
 Notes: The storage base class is technologically agnostic, but child classes are
 icluded that are parameterised for Li-Ion, hydrogen, and thermal storage.
 """
+
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
@@ -456,7 +457,7 @@ class BatteryStorageModel(StorageModel):
         eff_out=95,
         self_dis=2,
         variable_cost=0,
-        fixed_cost=23357,
+        fixed_cost=44947,
         max_c_rate=25,
         max_d_rate=25,
         capacity=1,
