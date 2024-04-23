@@ -280,6 +280,7 @@ class NuclearModel(GenerationModel):
         year_online=None,
         month_online=None,
         capacities=[1000],
+        limits=[0, 1000000],
     ):
         """
         == description ==
@@ -319,11 +320,13 @@ class NuclearModel(GenerationModel):
             "Nuclear",
             data_path,
             save_path,
-            year_online,
-            month_online,
+            year_online=year_online,
+            month_online=month_online,
+            limits=limits,
         )
+        self.power_out=np.array(self.power_out)
         self.total_installed_capacity = sum(capacities)
-
+        self.plant_capacities = capacities
         self.run_model()
 
     def __str__(self):
@@ -544,8 +547,8 @@ class OffshoreWindModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        fixed_cost=225618,
-        variable_cost=3,
+        fixed_cost=177843,
+        variable_cost=1,
         tilt=5,
         air_density=1.23,
         rotor_diameter=164,
@@ -564,6 +567,7 @@ class OffshoreWindModel(GenerationModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         """
         == description ==
@@ -609,6 +613,7 @@ class OffshoreWindModel(GenerationModel):
             save_path,
             year_online=year_online,
             month_online=month_online,
+            limits=limits,
         )
 
         self.tilt = tilt
@@ -827,7 +832,7 @@ class SolarModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        fixed_cost=42000,
+        fixed_cost=26975,
         variable_cost=0,
         orient=0,
         tilt=22,
@@ -840,6 +845,7 @@ class SolarModel(GenerationModel):
         save=True,
         year_online=None,
         month_online=None,
+        limits=[0, 1000000],
     ):
         """
         == description ==
@@ -878,8 +884,9 @@ class SolarModel(GenerationModel):
             "Solar",
             data_path,
             save_path,
-            year_online,
-            month_online,
+            year_online=year_online,
+            month_online=month_online,
+            limits=limits,
         )
 
         self.orient = np.deg2rad(orient)  # deg -> rad
@@ -981,9 +988,8 @@ class SolarModel(GenerationModel):
                     if d not in self.date_map:
                         continue
                     dn = self.date_map[d]  # day number (int)
-                    hr = int(row[1]) - 1  # hour (int) 0-23
+                    hr = int(row[1])  # hour (int) 0-23
                     diy = d.timetuple().tm_yday  # day in year 1-365
-                    print("Day in year: ", diy)
                     try:
                         irradiation = float(row[2]) / 3.6  # kJ -> Wh
                         irradiation = irradiation / 1.051  # merra2 overestimates
@@ -1054,11 +1060,8 @@ class SolarModel(GenerationModel):
                             + (np.pi * 15 / 180) * np.sin(lat) * np.sin(decl)
                         )
                     )
-                    print("Hour: ", hr)
-                    print("Irradiation: ", irradiation0)
+
                     # print all the variables which went into irradiation0, on one line
-                    if diy>5:
-                        quit()
                     if irradiation0 < 0:
                         continue
 
@@ -1116,9 +1119,7 @@ class SolarModel(GenerationModel):
                 site_power[dn * 24 + t] = 0.1 * site_power[dn * 24 + t - 2]
                 site_power[dn * 24 + t - 1] = (
                     0.33 * site_power[dn * 24 + t - 2]
-                )  # CQ correction to typo
-            for i in range(24 * 4):
-                print(f"{i}: {site_power[i]}")
+                )  # CQ correction to typos
             for t in range(len(site_power)):
                 self.power_out[t] += site_power[t]
         # the power values have been generated for each point. However, points with missing data are
@@ -1137,7 +1138,7 @@ class OnshoreWindModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        fixed_cost=115561,
+        fixed_cost=114529,
         variable_cost=6,
         tilt=5,
         air_density=1.23,
@@ -1158,6 +1159,7 @@ class OnshoreWindModel(GenerationModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):  # this added by CQ so that a power curve can optionally be imported
         """
         == description ==
@@ -1204,6 +1206,7 @@ class OnshoreWindModel(GenerationModel):
             save_path,
             year_online=year_online,
             month_online=month_online,
+            limits=limits,
         )
 
         # If no values given assume an equl distribution of turbines over sites

@@ -13,6 +13,7 @@ Notes: The following packages must be installed before use:
     - scipy
     - pyDOE
 """
+
 import csv
 import datetime
 import matplotlib.pyplot as plt
@@ -1176,6 +1177,7 @@ class ElectricitySystemGB(ElectricitySystem):
         year_max=2019,
         months=list(range(1, 13)),
         reliability=99,
+        demand=[],
         strategy="ordered",
         start_up_time=30 * 24 * 3,
         heat_demand=0,  # demands in each sector can optionally be defined in TWh/yr. Demand profile will then be scaled accordingly
@@ -1183,14 +1185,15 @@ class ElectricitySystemGB(ElectricitySystem):
         aggEV_list=aggEV.MultipleAggregatedEVs([]),
         scaler=1,
     ):
-        demand = get_GB_demand(
-            year_min,
-            year_max,
-            months,
-            heat_demand=0,  # demands in each sector can optionally be defined in TWh/yr. Demand profile will then be scaled accordingly
-            ev_demand=0,
-            elec_scaler=scaler,
-        )
+        if len(demand) == 0:
+            demand = get_GB_demand(
+                year_min,
+                year_max,
+                months,
+                heat_demand=0,  # demands in each sector can optionally be defined in TWh/yr. Demand profile will then be scaled accordingly
+                ev_demand=0,
+                elec_scaler=scaler,
+            )
         super().__init__(
             gen_list,
             stor_list,
