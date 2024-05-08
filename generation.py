@@ -955,13 +955,14 @@ class SolarModel(GenerationModel):
         solar_constant = 1367  # W/m2
 
         # hourly angles
-        hr_angle_deg = np.arange(-172.5, 187.5, 15)
-        hr_angle = np.deg2rad(hr_angle_deg)
-        diff_hr_angle = np.sin(np.deg2rad(hr_angle_deg + 7.5)) - np.sin(
-            np.deg2rad(hr_angle_deg - 7.5)
+        day_hr_angle_deg = np.arange(-172.5, 187.5, 15)
+        day_hr_angle = np.deg2rad(day_hr_angle_deg)
+        day_hr_angle = day_hr_angle.tolist()
+        day_diff_hr_angle = np.sin(np.deg2rad(day_hr_angle_deg + 7.5)) - np.sin(
+            np.deg2rad(day_hr_angle_deg - 7.5)
         )
-        diff_hr_angle = diff_hr_angle.tolist()
-        hr_angle = hr_angle.tolist()
+        day_diff_hr_angle = day_diff_hr_angle.tolist()
+
         # this list will contain the difference in sin(angle) between the
         # start and end of the hour
 
@@ -1004,7 +1005,6 @@ class SolarModel(GenerationModel):
             irradiances = irradiances[
                 rangeselectorindex : self.loadindex + len(self.n_good_points)
             ]
-            print(f"first {irradiances[0:24]}")
 
             irradiances = np.array(irradiances)
             powerout = np.zeros_like(
@@ -1017,15 +1017,18 @@ class SolarModel(GenerationModel):
             ]  # hours of the day, repeating for each day
             hourarray = np.array(hours)
             diy = [
-                i // 24 + 1 for i in range(len(irradiances))
-            ]  # day in year, for each hour
+                (self.operationaldatetime[index] + datetime.timedelta(hours=i))
+                .timetuple()
+                .tm_yday
+                for i in range(len(irradiances))
+            ]
             diy = np.array(diy)
-            hr_angles = hr_angle * int(
+            hr_angles = day_hr_angle * int(
                 len(irradiances) / 24
             )  # repeats the hr_angles for each day
             hr_angles = np.array(hr_angles)
 
-            diff_hr_angle = diff_hr_angle * int(len(irradiances) / 24)
+            diff_hr_angle = day_diff_hr_angle * int(len(irradiances) / 24)
             diff_hr_angle = np.array(diff_hr_angle)
             decl = 23.45 * np.sin(np.deg2rad(360 * (284 + diy) / 365))
             decl = np.deg2rad(decl)
@@ -1103,12 +1106,14 @@ class SolarModel(GenerationModel):
             erbs_ratio[clearness_index <= 0.22] = (
                 1 - 0.09 * clearness_index[clearness_index <= 0.22]
             )
-            erbs_ratio[clearness_index <= 0.8] = (
+            midclearness = (clearness_index > 0.22) & (clearness_index <= 0.8)
+
+            erbs_ratio[midclearness] = (
                 0.9511
-                - 0.1604 * clearness_index[clearness_index <= 0.8]
-                + 4.388 * np.power(clearness_index[clearness_index <= 0.8], 2)
-                - 16.638 * np.power(clearness_index[clearness_index <= 0.8], 3)
-                + 12.336 * np.power(clearness_index[clearness_index <= 0.8], 4)
+                - 0.1604 * clearness_index[midclearness]
+                + 4.388 * np.power(clearness_index[midclearness], 2)
+                - 16.638 * np.power(clearness_index[midclearness], 3)
+                + 12.336 * np.power(clearness_index[midclearness], 4)
             )
 
             D_beam = (
@@ -1117,15 +1122,14 @@ class SolarModel(GenerationModel):
             D_dhi = irradiances * erbs_ratio * (1 + np.cos(self.tilt)) / 2
             D = D_beam + D_dhi
 
-            for i in range(96):
-                print("Day: ", diy[i])
-                print(f"hour: {i%24} irradiation0: {irradiation0[i]}")
             poweroutvals = (
                 D * plant_area[index] * self.efficiency * self.performance_ratio * 1e-6
             )
 
             poweroutvals[sunwrong] = 0
             poweroutvals[noirradiance] = 0
+
+            # quit()
             # the previous code smoothed the ramp up and down rates. We will do the same, using the same technique
             # to smooth the data, we find the first and last times in each day where the power is non-zero
             # The power 2 hours after and before these times is then used as a baseline
@@ -1142,8 +1146,7 @@ class SolarModel(GenerationModel):
                 if power == 0 and not night:
                     sunsets.append(j - 1)
                     night = True
-            print(sunrises[0:4])
-            print(sunsets[0:4])
+
             sunrisearray = np.array(sunrises)
             sunsetarray = np.array(sunsets)
             sunrisingselector = sunrisearray + 1
@@ -1156,8 +1159,9 @@ class SolarModel(GenerationModel):
             poweroutvals[sunsettingselector] = 0.33 * poweroutvals[sunsetselectors]
             self.power_out_array[rangeselectorindex - self.loadindex :] += poweroutvals
             self.power_out = self.power_out_array.tolist()
-            for i in range(24 * 4):
-                print(f"{i} {poweroutvals[i]}")
+
+            # for i in range(24 * 4):
+            #     print(f"{i} {poweroutvals[i]}")
             self.max_possible_output += self.plant_capacities[index] * len(poweroutvals)
             # this needs checking
 
