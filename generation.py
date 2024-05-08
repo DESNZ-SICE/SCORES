@@ -284,7 +284,7 @@ class NuclearModel(GenerationModel):
     ):
         """
         == description ==
-        Initialises an OffshoreWindModel object. Searches for a saved result at
+        Initialises a Nuclear object. Searches for a saved result at
         save_path, otherwise generates a power curve and calculates the
         aggregated power output from turbines at the locations contained in
         sites.
@@ -324,7 +324,7 @@ class NuclearModel(GenerationModel):
             month_online=month_online,
             limits=limits,
         )
-        self.power_out=np.array(self.power_out)
+        self.power_out = np.array(self.power_out)
         self.total_installed_capacity = sum(capacities)
         self.plant_capacities = capacities
         self.run_model()
@@ -336,6 +336,88 @@ class NuclearModel(GenerationModel):
         """
         == description ==
         Generates power output. This is assumed as constant for Nuclear plants, so is only
+        affected by the installed capacity and the operational date.
+        """
+
+        for sitenum in range(len(self.sites)):
+            operationaltime = self.operationaldatetime[sitenum]
+            timedelta = self.startdatetime - operationaltime
+            timedeltahours = timedelta.days * 24 + timedelta.seconds / 3600
+            timedeltahours = int(timedeltahours)
+            self.power_out[timedeltahours:] += self.plant_capacities[sitenum]
+
+        self.scale_output(self.total_installed_capacity)
+
+
+class GeothermalModel(GenerationModel):
+    def __init__(
+        self,
+        sites=[0],
+        year_min=2013,
+        year_max=2019,
+        months=list(range(1, 13)),
+        fixed_cost=2000000,
+        variable_cost=0,
+        data_path="",
+        save_path="stored_model_runs/",
+        save=True,
+        year_online=None,
+        month_online=None,
+        capacities=[1000],
+        limits=[0, 1000000],
+    ):
+        """
+        == description ==
+        Initialises a Geothermal object.
+        == parameters ==
+        sites: (Array<int>) List of site indexes to be used. The site indexes here mean little, but
+        are used for consistency. The length of the site index must match the length of the capacities
+        year_min: (int) earliest year in sumlation
+        year_max: (int) latest year in simulation
+        months: (Array<int>) list of months to be included in the simulation
+        fixed_cost: (float) cost incurred per MW of installation in GBP
+        variable_cost: (float) cost incurred per MWh of generation in GBP
+        data_path: (str) path to file containing raw data
+        save_path: (str) path to file where output will be saved
+        save: (boo) determines whether to save the results of the run
+        capacity: (Array <float>) installed capacity of each site in MW
+        == returns ==
+        None
+        """
+        # raises an error if the number of sites and the number of capacities are not the same
+        if len(capacities) != len(sites):
+            raise Exception(
+                "The number of sites and the number of capacities must be the same"
+            )
+
+        super().__init__(
+            sites,
+            year_min,
+            year_max,
+            months,
+            fixed_cost,
+            variable_cost,
+            "Geothermal",
+            data_path,
+            save_path,
+            year_online=year_online,
+            month_online=month_online,
+            limits=limits,
+        )
+        self.power_out = np.array(self.power_out)
+        self.total_installed_capacity = sum(capacities)
+        self.plant_capacities = capacities
+        self.run_model()
+
+    def __str__(self):
+        return (
+            f"Geothermal Generator, total capacity: {self.total_installed_capacity} MW"
+        )
+
+    def run_model(self):
+        """
+        == description ==
+        Generates power output. This is assumed as constant for Geothermal plants, so is only
         affected by the installed capacity and the operational date.
         """
 
@@ -1513,6 +1595,7 @@ class OnshoreWindModel500(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1535,6 +1618,7 @@ class OnshoreWindModel500(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
         # based on Vestas V39
 
@@ -1553,6 +1637,7 @@ class OnshoreWindModel1000(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1575,6 +1660,7 @@ class OnshoreWindModel1000(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
         # based on AN Bonus 1000/54
 
@@ -1593,6 +1679,7 @@ class OnshoreWindModel1500(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1615,6 +1702,7 @@ class OnshoreWindModel1500(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
         # based on Vestas V82
 
@@ -1633,6 +1721,7 @@ class OnshoreWindModel2000(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1655,6 +1744,7 @@ class OnshoreWindModel2000(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -1672,6 +1762,7 @@ class OnshoreWindModel2000(OnshoreWindModel):
 #         year_online=None,
 #         month_online=None,
 #         force_run=False,
+limits = ([0, 1000000],)
 #     ):
 #         super().__init__(
 #             sites=sites,
@@ -1694,6 +1785,7 @@ class OnshoreWindModel2000(OnshoreWindModel):
 #             year_online=year_online,
 #             month_online=month_online,
 #             force_run=force_run,
+limits = limits
 #         )
 #         # based on the Siemens SWT-2.3-108
 
@@ -1712,6 +1804,7 @@ class OnshoreWindModel2500(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1734,6 +1827,7 @@ class OnshoreWindModel2500(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
         # based on GE 2.5-100
 
@@ -1752,6 +1846,7 @@ class OnshoreWindModel3000(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1774,6 +1869,7 @@ class OnshoreWindModel3000(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -1791,6 +1887,7 @@ class OnshoreWindModel3600(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1813,6 +1910,7 @@ class OnshoreWindModel3600(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -1830,6 +1928,7 @@ class OnshoreWindModel4000(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1852,6 +1951,7 @@ class OnshoreWindModel4000(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -1869,6 +1969,7 @@ class OnshoreWindModel5000(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1891,6 +1992,7 @@ class OnshoreWindModel5000(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -1908,6 +2010,7 @@ class OnshoreWindModel6000(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1930,6 +2033,7 @@ class OnshoreWindModel6000(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -1947,6 +2051,7 @@ class OnshoreWindModel6600(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1969,6 +2074,7 @@ class OnshoreWindModel6600(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -1986,6 +2092,7 @@ class OnshoreWindModel7000(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2008,6 +2115,7 @@ class OnshoreWindModel7000(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -2025,6 +2133,7 @@ class OffshoreWindModel2000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2047,6 +2156,7 @@ class OffshoreWindModel2000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
         # based on Vestas v80 2MW: https://en.wind-turbine-models.com/turbines/19-vestas-v80-2.0
@@ -2066,6 +2176,7 @@ class OffshoreWindModel3000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2088,6 +2199,7 @@ class OffshoreWindModel3000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
         # based on Vestas V90 3MW: https://en.wind-turbine-models.com/turbines/603-vestas-v90-3.0
@@ -2107,6 +2219,7 @@ class OffshoreWindModel5000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2129,6 +2242,7 @@ class OffshoreWindModel5000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
         # Based on Repower 5M: https://www.thewindpower.net/turbine_en_14_repower_5m.php
@@ -2148,6 +2262,7 @@ class OffshoreWindModel6000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2170,6 +2285,7 @@ class OffshoreWindModel6000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
         # based on Siemens SWT-6.0-154: https://en.wind-turbine-models.com/turbines/657-siemens-swt-6.0-154
         # hub height is an estimation, as it's site specific
@@ -2189,6 +2305,7 @@ class OffshoreWindModel7000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2211,6 +2328,7 @@ class OffshoreWindModel7000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
         # based on Siemens SWT-7.0-154: https://en.wind-turbine-models.com/turbines/1102-siemens-swt-7.0-154
         # hub height is an estimation, as it's site specific
@@ -2230,6 +2348,7 @@ class OffshoreWindModel8000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2252,6 +2371,7 @@ class OffshoreWindModel8000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
         # based on Vestas V164-8MW: https://en.wind-turbine-models.com/turbines/318-vestas-v164-8.0
 
@@ -2270,6 +2390,7 @@ class OffshoreWindModel10000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2292,6 +2413,7 @@ class OffshoreWindModel10000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -2309,6 +2431,7 @@ class OffshoreWindModel12000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2331,6 +2454,7 @@ class OffshoreWindModel12000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -2348,6 +2472,7 @@ class OffshoreWindModel15000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2370,6 +2495,7 @@ class OffshoreWindModel15000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -2387,6 +2513,7 @@ class OffshoreWindModel17000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2409,6 +2536,7 @@ class OffshoreWindModel17000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -2426,6 +2554,7 @@ class OffshoreWindModel20000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2448,6 +2577,7 @@ class OffshoreWindModel20000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
