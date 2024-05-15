@@ -904,7 +904,7 @@ class SolarModel(GenerationModel):
         efficiency=0.17,
         performance_ratio=0.85,
         plant_capacities=[1],
-        area_factor=6.4,
+        area_factor=5.84,
         data_path="",
         save_path="stored_model_runs/",
         save=True,
@@ -970,10 +970,11 @@ class SolarModel(GenerationModel):
             self.check_for_saved_run(self.save_path + file_name) is False
             or force_run is True
         ):
-            print("Running model")
             self.run_model()
             if save is True:
                 self.save_run(self.save_path + file_name)
+        else:
+            print("Loading saved run")
 
     def run_model(self):
         """
@@ -1030,7 +1031,6 @@ class SolarModel(GenerationModel):
                 site_lat[int(row[0])] = np.deg2rad(float(row[1]))
 
         plant_area = [i * self.area_factor * 10**3 for i in self.plant_capacities]
-        print("Plant area", plant_area)
         solar_constant = 1367  # W/m2
 
         # hourly angles
@@ -1089,7 +1089,7 @@ class SolarModel(GenerationModel):
                 irradiances
             )  # creates zeros array to hold the power
             irradiances /= 3.6  # kJ -> Wh
-            # irradiances /= 1.051  # merra2 overestimates
+            irradiances /= 1.051  # merra2 overestimates
             hours = [
                 i % 24 for i in range(len(irradiances))
             ]  # hours of the day, repeating for each day
