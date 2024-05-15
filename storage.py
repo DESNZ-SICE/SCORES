@@ -75,10 +75,9 @@ class StorageModel:
         self.en_in = 0  # total energy into storage (grid side)
         self.en_out = 0  # total energy out of storage (grid side)
         self.curt = 0  # total supply that could not be stored
-
         # from optimise setting only (added by Mac)
         self.discharge = np.empty([])  # timeseries of discharge rate (grid side) MW
-        self.charge = np.empty([])  # timeseries of charge rate (grid side) MW
+        self.charge = np.empty([])  # timeseries of charge rate (grid side) M
         self.SOC = []  # timeseries of Storage State of Charge (SOC) MWh
         self.chargetimeseries = []
 
@@ -285,6 +284,9 @@ class StorageModel:
 
         else:
             # there is insufficient storage to meet shortfall
+            self.missed_demand[t] = surplus + largest_out * self.eff_out / (
+                100 * self.t_res
+            )
             self.en_out += largest_out
             self.output[t] = surplus + largest_out * self.eff_out / (100 * self.t_res)
             if t >= self.start_up_time:
@@ -335,6 +337,7 @@ class StorageModel:
         self.start_up_time = start_up_time
         self.charge = 0.0  # intialise stosrage as empty
         self.output = [0] * len(surplus)
+        self.missed_demand = [0] * len(surplus)
         self.n_years = len(surplus) / (365.25 * 24 / t_res)
         self.energy_shortfalls = 0
         self.efficiencylosses = 0
