@@ -44,8 +44,8 @@ class GenerationModel:
         fixed_cost: (float) cost incurred per MW-year of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
         limits: (array<float>) used for .full_optimise to define the max and min installed generation in MWh ([min,max])
-        year_online: list(int) year the generation unit was installed
-        month_online: list(int) month the generation unit was installed
+        year_online: list(int) year the generation unit was installed, at each site
+        month_online: list(int) month the generation unit was installed, at each site
         == returns ==
         None
         """
@@ -53,13 +53,18 @@ class GenerationModel:
         self.year_min = year_min
         self.year_max = year_max
         self.months = months
+        if self.months == list(range(1, 13)):
+            self.monthsubsample = False
+        else:
+            self.monthsubsample = True
         self.fixed_cost = fixed_cost
         self.variable_cost = variable_cost
         self.name = name
         self.data_path = data_path
         self.save_path = save_path
         self.limits = limits
-        self.max_possible_output = 0  # keeps track of max possible output
+        self.max_possible_output = 0  # keeps track of max possible output: this ensures the load factor accounts for the year and month the generator came online
+        # if no online date is given, assume the generator is online from the start
         if year_online is None:
             self.year_online = [year_min] * len(sites)
         else:
@@ -70,10 +75,8 @@ class GenerationModel:
         else:
             self.month_online = month_online
 
-        self.firstdatadatetime = (
-            False  # this is used to check if the first data point has been found
-        )
-        self.loadindex = 0  # this shows us which row to load the data in from
+        self.firstdatadatetime = False  # this is used to check if the start date of the weather data has been found
+        self.loadindex = 0  # this shows us which row of the weather data corresponds to the start date of the simulation. For now it is set to 0, but this may be changed later
 
         self.date_map = {}
         n = 0
@@ -81,22 +84,35 @@ class GenerationModel:
         # first get date range which fits within the bounds
         d = datetime.datetime(self.year_min, min(self.months), 1)
         self.startdatetime = d
+
         while d.year <= self.year_max:
             if d.month in self.months:
                 self.date_map[d] = n
                 n += 1
                 d += datetime.timedelta(1)
 
+        # if we're not using all of the months of the year, we need to filter out the months we want later
+        if self.monthsubsample:
+            d = datetime.datetime(self.year_min, min(self.months), 1)
+            counter = 0
+            self.monthindexlist = []
+            while d.year <= self.year_max:
+                if d.month in self.months:
+                    self.monthindexlist.append(counter)
+                counter += 1
         self.operationaldatetime = [
             datetime.datetime(self.year_online[i], self.month_online[i], 1)
             for i in range(len(self.year_online))
         ]
-
-        self.power_out = [0.0] * len(self.date_map) * 24
+        # our power_out arrays will be created here. If we're subsampling for particular months,
+        # these arrays will be too long: we'll filter them after running the model
+        enddatetime = datetime.datetime(year_max + 1, 1, 1)
+        numberofpoints = int((enddatetime - self.startdatetime).total_seconds() // 3600)
+        self.power_out = [0.0] * numberofpoints
         self.power_out_scaled = [0.0] * len(self.power_out)
 
         self.power_out_array = np.array(self.power_out)
-        self.n_good_points = [0] * len(self.date_map) * 24
+        self.n_good_points = [0] * numberofpoints
 
     def scale_output(self, installed_capacity, scale=False):
         """
@@ -115,25 +131,8 @@ class GenerationModel:
             sf = installed_capacity / self.total_installed_capacity
         else:
             sf = 1
-        for t in range(len(self.power_out)):
-            # If no data is available forward fill
 
-            #    _____ _               _      _   _           _     _   _     _       _                  _ _     _
-            #   / ____| |             | |    | | | |         | |   | | | |   (_)     (_)                | (_)   | |
-            #  | |    | |__   ___  ___| | __ | |_| |__   __ _| |_  | |_| |__  _ ___   _ ___  __   ____ _| |_  __| |
-            #  | |    | '_ \ / _ \/ __| |/ / | __| '_ \ / _` | __| | __| '_ \| / __| | / __| \ \ / / _` | | |/ _` |
-            #  | |____| | | |  __/ (__|   <  | |_| | | | (_| | |_  | |_| | | | \__ \ | \__ \  \ V / (_| | | | (_| |
-            #   \_____|_| |_|\___|\___|_|\_\  \__|_| |_|\__,_|\__|  \__|_| |_|_|___/ |_|___/   \_/ \__,_|_|_|\__,_|
-
-            # I'm pretty sure we don't need to forward fill anymore, as we are now using a vectorised approach, so commented out
-
-            # if self.n_good_points[t] == 0:
-            #     self.power_out_scaled[t] = self.power_out_scaled[t - 1]
-            #     continue
-            # Otherwise scale by percentage of available data
-            # self.power_out_scaled[t] = (self.power_out[t] * sf
-            #                             * mp / self.n_good_points[t])
-            self.power_out_scaled[t] = self.power_out[t] * sf
+        self.power_out_scaled = sf * np.array(self.power_out)
         self.scaled_installed_capacity = installed_capacity
 
         return np.array(self.power_out_scaled)
@@ -221,23 +220,6 @@ class GenerationModel:
 
         return 100 * sum(self.power_out) / (self.max_possible_output)
 
-        # old version below for reference
-
-        # if sum(self.n_good_points) < 0.25 * len(self.n_good_points):
-        #     raise Exception("not enough good data")
-
-        # if max(self.n_good_points) == 1:
-        #     return (
-        #         100
-        #         * sum(self.power_out)
-        #         / (self.total_installed_capacity * sum(self.n_good_points))
-        #     )
-
-        # else:
-        #     if max(self.power_out_scaled) == 0:
-        #         self.scale_output(1)
-        #     return 100 * np.mean(self.power_out_scaled) / self.scaled_installed_capacity
-
     def get_cost(self):
         """
         == description ==
@@ -257,11 +239,8 @@ class GenerationModel:
         )
 
     def get_diurnal_profile(self):
-        p = [0.0] * 24
-        sf = int(len(self.power_out_scaled) / 24)
-        for t in range(len(self.power_out_scaled)):
-            p[t % 24] += self.power_out_scaled[t] / sf
-
+        # this reshapes the powerout array into a 2d array with 24 columns (one for each hour of the day), and then takes the mean of each column
+        p = self.power_out_scaled.reshape(-1, 24).mean(axis=0)
         return p
 
 
@@ -346,6 +325,8 @@ class NuclearModel(GenerationModel):
             timedeltahours = int(timedeltahours)
             self.power_out[timedeltahours:] += self.plant_capacities[sitenum]
 
+        if self.monthsubsample:
+            self.power_out = self.power_out[self.monthindexlist]
         self.scale_output(self.total_installed_capacity)
 
 
@@ -427,7 +408,8 @@ class GeothermalModel(GenerationModel):
             timedeltahours = timedelta.days * 24 + timedelta.seconds / 3600
             timedeltahours = int(timedeltahours)
             self.power_out[timedeltahours:] += self.plant_capacities[sitenum]
-
+        if self.monthsubsample:
+            self.power_out = self.power_out[self.monthindexlist]
         self.scale_output(self.total_installed_capacity)
 
 
@@ -727,7 +709,7 @@ class OffshoreWindModel(GenerationModel):
 
     def __str__(self):
         return f"Offshore wind model\nNumber of Turbines:{sum(self.n_turbine)}\t Turbine Power:\
-{self.turbine_size} MW\nTotal power:{round(sum(self.n_turbine)*self.turbine_size)}Mw"
+            {self.turbine_size} MW\nTotal power:{round(sum(self.n_turbine)*self.turbine_size)}MW"
 
     def run_model(self):
         """
@@ -902,7 +884,8 @@ class OffshoreWindModel(GenerationModel):
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
         # currently installed capacity: the values should not
-
+        if self.monthsubsample:
+            self.power_out = self.power_out[self.monthindexlist]
         self.power_out = self.power_out_array.tolist()
         self.scale_output(self.total_installed_capacity)
 
@@ -921,13 +904,14 @@ class SolarModel(GenerationModel):
         efficiency=0.17,
         performance_ratio=0.85,
         plant_capacities=[1],
-        area_factor=5.84,
+        area_factor=6.4,
         data_path="",
         save_path="stored_model_runs/",
         save=True,
         year_online=None,
         month_online=None,
         limits=[0, 1000000],
+        force_run=False,
     ):
         """
         == description ==
@@ -952,7 +936,7 @@ class SolarModel(GenerationModel):
         data_path: (str) path to file containing raw data
         save_path: (str) path to file where output will be saved
         save: (boo) determines whether to save the results of the run
-
+        force_run: (bool) determines whether to force the model to run
         == returns ==
         None
         """
@@ -982,7 +966,11 @@ class SolarModel(GenerationModel):
         if file_name == "":
             save = False
 
-        if self.check_for_saved_run(self.save_path + file_name) is False:
+        if (
+            self.check_for_saved_run(self.save_path + file_name) is False
+            or force_run is True
+        ):
+            print("Running model")
             self.run_model()
             if save is True:
                 self.save_run(self.save_path + file_name)
@@ -1010,6 +998,7 @@ class SolarModel(GenerationModel):
                     sites.append(int(row[0]))
             self.sites = sites
             if self.plant_capacities == []:
+                print("No plant capacities given")
                 self.plant_capacities = [1] * len(sites)
 
         elif self.sites[:2] == "lf":
@@ -1041,6 +1030,7 @@ class SolarModel(GenerationModel):
                 site_lat[int(row[0])] = np.deg2rad(float(row[1]))
 
         plant_area = [i * self.area_factor * 10**3 for i in self.plant_capacities]
+        print("Plant area", plant_area)
         solar_constant = 1367  # W/m2
 
         # hourly angles
@@ -1094,13 +1084,12 @@ class SolarModel(GenerationModel):
             irradiances = irradiances[
                 rangeselectorindex : self.loadindex + len(self.n_good_points)
             ]
-
             irradiances = np.array(irradiances)
             powerout = np.zeros_like(
                 irradiances
             )  # creates zeros array to hold the power
             irradiances /= 3.6  # kJ -> Wh
-            irradiances /= 1.051  # merra2 overestimates
+            # irradiances /= 1.051  # merra2 overestimates
             hours = [
                 i % 24 for i in range(len(irradiances))
             ]  # hours of the day, repeating for each day
@@ -1238,6 +1227,7 @@ class SolarModel(GenerationModel):
 
             sunrisearray = np.array(sunrises)
             sunsetarray = np.array(sunsets)
+
             sunrisingselector = sunrisearray + 1
             sunrisenselectors = sunrisearray + 2
             sunsettingselector = sunsetarray - 1
@@ -1284,6 +1274,8 @@ class SolarModel(GenerationModel):
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
         # currently installed capacity: the values should not change
+        if self.monthsubsample:
+            self.power_out = self.power_out[self.monthindexlist]
         self.scale_output(self.total_installed_capacity)
 
 
