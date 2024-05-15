@@ -44,8 +44,8 @@ class GenerationModel:
         fixed_cost: (float) cost incurred per MW-year of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
         limits: (array<float>) used for .full_optimise to define the max and min installed generation in MWh ([min,max])
-        year_online: list(int) year the generation unit was installed
-        month_online: list(int) month the generation unit was installed
+        year_online: list(int) year the generation unit was installed, at each site
+        month_online: list(int) month the generation unit was installed, at each site
         == returns ==
         None
         """
@@ -53,13 +53,18 @@ class GenerationModel:
         self.year_min = year_min
         self.year_max = year_max
         self.months = months
+        if self.months == list(range(1, 13)):
+            self.monthsubsample = False
+        else:
+            self.monthsubsample = True
         self.fixed_cost = fixed_cost
         self.variable_cost = variable_cost
         self.name = name
         self.data_path = data_path
         self.save_path = save_path
         self.limits = limits
-        self.max_possible_output = 0  # keeps track of max possible output
+        self.max_possible_output = 0  # keeps track of max possible output: this ensures the load factor accounts for the year and month the generator came online
+        # if no online date is given, assume the generator is online from the start
         if year_online is None:
             self.year_online = [year_min] * len(sites)
         else:
@@ -70,10 +75,8 @@ class GenerationModel:
         else:
             self.month_online = month_online
 
-        self.firstdatadatetime = (
-            False  # this is used to check if the first data point has been found
-        )
-        self.loadindex = 0  # this shows us which row to load the data in from
+        self.firstdatadatetime = False  # this is used to check if the start date of the weather data has been found
+        self.loadindex = 0  # this shows us which row of the weather data corresponds to the start date of the simulation. For now it is set to 0, but this may be changed later
 
         self.date_map = {}
         n = 0
@@ -81,22 +84,35 @@ class GenerationModel:
         # first get date range which fits within the bounds
         d = datetime.datetime(self.year_min, min(self.months), 1)
         self.startdatetime = d
+
         while d.year <= self.year_max:
             if d.month in self.months:
                 self.date_map[d] = n
                 n += 1
                 d += datetime.timedelta(1)
 
+        # if we're not using all of the months of the year, we need to filter out the months we want later
+        if self.monthsubsample:
+            d = datetime.datetime(self.year_min, min(self.months), 1)
+            counter = 0
+            self.monthindexlist = []
+            while d.year <= self.year_max:
+                if d.month in self.months:
+                    self.monthindexlist.append(counter)
+                counter += 1
         self.operationaldatetime = [
             datetime.datetime(self.year_online[i], self.month_online[i], 1)
             for i in range(len(self.year_online))
         ]
-
-        self.power_out = [0.0] * len(self.date_map) * 24
+        # our power_out arrays will be created here. If we're subsampling for particular months,
+        # these arrays will be too long: we'll filter them after running the model
+        enddatetime = datetime.datetime(year_max + 1, 1, 1)
+        numberofpoints = int((enddatetime - self.startdatetime).total_seconds() // 3600)
+        self.power_out = [0.0] * numberofpoints
         self.power_out_scaled = [0.0] * len(self.power_out)
 
         self.power_out_array = np.array(self.power_out)
-        self.n_good_points = [0] * len(self.date_map) * 24
+        self.n_good_points = [0] * numberofpoints
 
     def scale_output(self, installed_capacity, scale=False):
         """
@@ -115,25 +131,8 @@ class GenerationModel:
             sf = installed_capacity / self.total_installed_capacity
         else:
             sf = 1
-        for t in range(len(self.power_out)):
-            # If no data is available forward fill
 
-            #    _____ _               _      _   _           _     _   _     _       _                  _ _     _
-            #   / ____| |             | |    | | | |         | |   | | | |   (_)     (_)                | (_)   | |
-            #  | |    | |__   ___  ___| | __ | |_| |__   __ _| |_  | |_| |__  _ ___   _ ___  __   ____ _| |_  __| |
-            #  | |    | '_ \ / _ \/ __| |/ / | __| '_ \ / _` | __| | __| '_ \| / __| | / __| \ \ / / _` | | |/ _` |
-            #  | |____| | | |  __/ (__|   <  | |_| | | | (_| | |_  | |_| | | | \__ \ | \__ \  \ V / (_| | | | (_| |
-            #   \_____|_| |_|\___|\___|_|\_\  \__|_| |_|\__,_|\__|  \__|_| |_|_|___/ |_|___/   \_/ \__,_|_|_|\__,_|
-
-            # I'm pretty sure we don't need to forward fill anymore, as we are now using a vectorised approach, so commented out
-
-            # if self.n_good_points[t] == 0:
-            #     self.power_out_scaled[t] = self.power_out_scaled[t - 1]
-            #     continue
-            # Otherwise scale by percentage of available data
-            # self.power_out_scaled[t] = (self.power_out[t] * sf
-            #                             * mp / self.n_good_points[t])
-            self.power_out_scaled[t] = self.power_out[t] * sf
+        self.power_out_scaled = sf * np.array(self.power_out)
         self.scaled_installed_capacity = installed_capacity
 
         return np.array(self.power_out_scaled)
@@ -221,23 +220,6 @@ class GenerationModel:
 
         return 100 * sum(self.power_out) / (self.max_possible_output)
 
-        # old version below for reference
-
-        # if sum(self.n_good_points) < 0.25 * len(self.n_good_points):
-        #     raise Exception("not enough good data")
-
-        # if max(self.n_good_points) == 1:
-        #     return (
-        #         100
-        #         * sum(self.power_out)
-        #         / (self.total_installed_capacity * sum(self.n_good_points))
-        #     )
-
-        # else:
-        #     if max(self.power_out_scaled) == 0:
-        #         self.scale_output(1)
-        #     return 100 * np.mean(self.power_out_scaled) / self.scaled_installed_capacity
-
     def get_cost(self):
         """
         == description ==
@@ -257,11 +239,8 @@ class GenerationModel:
         )
 
     def get_diurnal_profile(self):
-        p = [0.0] * 24
-        sf = int(len(self.power_out_scaled) / 24)
-        for t in range(len(self.power_out_scaled)):
-            p[t % 24] += self.power_out_scaled[t] / sf
-
+        # this reshapes the powerout array into a 2d array with 24 columns (one for each hour of the day), and then takes the mean of each column
+        p = self.power_out_scaled.reshape(-1, 24).mean(axis=0)
         return p
 
 
@@ -284,7 +263,7 @@ class NuclearModel(GenerationModel):
     ):
         """
         == description ==
-        Initialises an OffshoreWindModel object. Searches for a saved result at
+        Initialises a Nuclear object. Searches for a saved result at
         save_path, otherwise generates a power curve and calculates the
         aggregated power output from turbines at the locations contained in
         sites.
@@ -324,7 +303,7 @@ class NuclearModel(GenerationModel):
             month_online=month_online,
             limits=limits,
         )
-        self.power_out=np.array(self.power_out)
+        self.power_out = np.array(self.power_out)
         self.total_installed_capacity = sum(capacities)
         self.plant_capacities = capacities
         self.run_model()
@@ -346,6 +325,91 @@ class NuclearModel(GenerationModel):
             timedeltahours = int(timedeltahours)
             self.power_out[timedeltahours:] += self.plant_capacities[sitenum]
 
+        if self.monthsubsample:
+            self.power_out = self.power_out[self.monthindexlist]
+        self.scale_output(self.total_installed_capacity)
+
+
+class GeothermalModel(GenerationModel):
+    def __init__(
+        self,
+        sites=[0],
+        year_min=2013,
+        year_max=2019,
+        months=list(range(1, 13)),
+        fixed_cost=2000000,
+        variable_cost=0,
+        data_path="",
+        save_path="stored_model_runs/",
+        save=True,
+        year_online=None,
+        month_online=None,
+        capacities=[1000],
+        limits=[0, 1000000],
+    ):
+        """
+        == description ==
+        Initialises a Geothermal object.
+        == parameters ==
+        sites: (Array<int>) List of site indexes to be used. The site indexes here mean little, but
+        are used for consistency. The length of the site index must match the length of the capacities
+        year_min: (int) earliest year in sumlation
+        year_max: (int) latest year in simulation
+        months: (Array<int>) list of months to be included in the simulation
+        fixed_cost: (float) cost incurred per MW of installation in GBP
+        variable_cost: (float) cost incurred per MWh of generation in GBP
+        data_path: (str) path to file containing raw data
+        save_path: (str) path to file where output will be saved
+        save: (boo) determines whether to save the results of the run
+        capacity: (Array <float>) installed capacity of each site in MW
+        == returns ==
+        None
+        """
+        # raises an error if the number of sites and the number of capacities are not the same
+        if len(capacities) != len(sites):
+            raise Exception(
+                "The number of sites and the number of capacities must be the same"
+            )
+
+        super().__init__(
+            sites,
+            year_min,
+            year_max,
+            months,
+            fixed_cost,
+            variable_cost,
+            "Geothermal",
+            data_path,
+            save_path,
+            year_online=year_online,
+            month_online=month_online,
+            limits=limits,
+        )
+        self.power_out = np.array(self.power_out)
+        self.total_installed_capacity = sum(capacities)
+        self.plant_capacities = capacities
+        self.run_model()
+
+    def __str__(self):
+        return (
+            f"Geothermal Generator, total capacity: {self.total_installed_capacity} MW"
+        )
+
+    def run_model(self):
+        """
+        == description ==
+        Generates power output. This is assumed as constant for Geothermal plants, so is only
+        affected by the installed capacity and the operational date.
+        """
+
+        for sitenum in range(len(self.sites)):
+            operationaltime = self.operationaldatetime[sitenum]
+            timedelta = self.startdatetime - operationaltime
+            timedeltahours = timedelta.days * 24 + timedelta.seconds / 3600
+            timedeltahours = int(timedeltahours)
+            self.power_out[timedeltahours:] += self.plant_capacities[sitenum]
+        if self.monthsubsample:
+            self.power_out = self.power_out[self.monthindexlist]
         self.scale_output(self.total_installed_capacity)
 
 
@@ -645,7 +709,7 @@ class OffshoreWindModel(GenerationModel):
 
     def __str__(self):
         return f"Offshore wind model\nNumber of Turbines:{sum(self.n_turbine)}\t Turbine Power:\
-{self.turbine_size} MW\nTotal power:{round(sum(self.n_turbine)*self.turbine_size)}Mw"
+            {self.turbine_size} MW\nTotal power:{round(sum(self.n_turbine)*self.turbine_size)}MW"
 
     def run_model(self):
         """
@@ -820,7 +884,8 @@ class OffshoreWindModel(GenerationModel):
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
         # currently installed capacity: the values should not
-
+        if self.monthsubsample:
+            self.power_out = self.power_out[self.monthindexlist]
         self.power_out = self.power_out_array.tolist()
         self.scale_output(self.total_installed_capacity)
 
@@ -839,13 +904,14 @@ class SolarModel(GenerationModel):
         efficiency=0.17,
         performance_ratio=0.85,
         plant_capacities=[1],
-        area_factor=5.84,
+        area_factor=6.4,
         data_path="",
         save_path="stored_model_runs/",
         save=True,
         year_online=None,
         month_online=None,
         limits=[0, 1000000],
+        force_run=False,
     ):
         """
         == description ==
@@ -870,7 +936,7 @@ class SolarModel(GenerationModel):
         data_path: (str) path to file containing raw data
         save_path: (str) path to file where output will be saved
         save: (boo) determines whether to save the results of the run
-
+        force_run: (bool) determines whether to force the model to run
         == returns ==
         None
         """
@@ -900,7 +966,11 @@ class SolarModel(GenerationModel):
         if file_name == "":
             save = False
 
-        if self.check_for_saved_run(self.save_path + file_name) is False:
+        if (
+            self.check_for_saved_run(self.save_path + file_name) is False
+            or force_run is True
+        ):
+            print("Running model")
             self.run_model()
             if save is True:
                 self.save_run(self.save_path + file_name)
@@ -928,6 +998,7 @@ class SolarModel(GenerationModel):
                     sites.append(int(row[0]))
             self.sites = sites
             if self.plant_capacities == []:
+                print("No plant capacities given")
                 self.plant_capacities = [1] * len(sites)
 
         elif self.sites[:2] == "lf":
@@ -959,173 +1030,252 @@ class SolarModel(GenerationModel):
                 site_lat[int(row[0])] = np.deg2rad(float(row[1]))
 
         plant_area = [i * self.area_factor * 10**3 for i in self.plant_capacities]
+        print("Plant area", plant_area)
         solar_constant = 1367  # W/m2
 
         # hourly angles
-        hr_angle_deg = np.arange(-172.5, 187.5, 15)
-        hr_angle = np.deg2rad(hr_angle_deg)
+        day_hr_angle_deg = np.arange(-172.5, 187.5, 15)
+        day_hr_angle = np.deg2rad(day_hr_angle_deg)
+        day_hr_angle = day_hr_angle.tolist()
+        day_diff_hr_angle = np.sin(np.deg2rad(day_hr_angle_deg + 7.5)) - np.sin(
+            np.deg2rad(day_hr_angle_deg - 7.5)
+        )
+        day_diff_hr_angle = day_diff_hr_angle.tolist()
 
         # this list will contain the difference in sin(angle) between the
         # start and end of the hour
-        diff_hr_angle = []
-        for t in range(24):
-            diff_hr_angle.append(
-                np.sin(np.deg2rad(hr_angle_deg[t] + 7.5))
-                - np.sin(np.deg2rad(hr_angle_deg[t] - 7.5))
-            )
 
         # Get the solar data
         for index, site in enumerate(self.sites):
-            site_power = [0.0] * len(self.date_map) * 24
-            # need to keep each site sepeate at first due to smoothing fix
-            site_power = [0] * len(self.n_good_points)
-            with open(self.data_path + str(site) + ".csv", "rU") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    d = datetime.datetime.strptime(row[0], "%d/%m/%Y %H:%M")
+            if self.firstdatadatetime == False:
+                with open(self.data_path + str(site) + ".csv", "r") as file:
+                    loadeddata = file.readlines()
+                    firstrow = loadeddata[1].split(",")
 
-                    if d not in self.date_map:
-                        continue
-                    dn = self.date_map[d]  # day number (int)
-                    hr = int(row[1])  # hour (int) 0-23
-                    diy = d.timetuple().tm_yday  # day in year 1-365
-                    try:
-                        irradiation = float(row[2]) / 3.6  # kJ -> Wh
-                        irradiation = irradiation / 1.051  # merra2 overestimates
-                        # self.n_good_points[dn* 24 + hr] += 1
-                        # I believe this should be =1 not +=1 (Matt)
-                        self.n_good_points[dn * 24 + hr] = 1
-                    except:
-                        continue
-                    decl = 23.45 * np.sin(np.deg2rad(360 * (284 + diy) / 365))
-
-                    decl = np.deg2rad(decl)
-
-                    lat = site_lat[site]
-
-                    # get incident angle
-                    c_incident = (
-                        np.sin(decl) * np.sin(lat) * np.cos(self.tilt)
-                        - (
-                            np.sin(decl)
-                            * np.cos(lat)
-                            * np.sin(self.tilt)
-                            * np.cos(self.orient)
-                        )
-                        + (
-                            np.cos(decl)
-                            * np.cos(lat)
-                            * np.cos(self.tilt)
-                            * np.cos(hr_angle[hr])
-                        )
-                        + (
-                            np.cos(decl)
-                            * np.sin(lat)
-                            * np.sin(self.tilt)
-                            * np.cos(self.orient)
-                            * np.cos(hr_angle[hr])
-                        )
-                        + (
-                            np.cos(decl)
-                            * np.sin(self.tilt)
-                            * np.sin(self.orient)
-                            * np.sin(hr_angle[hr])
-                        )
-                    )
-                    incident = np.arccos(c_incident)
-                    if incident > np.pi / 2:
-                        continue  # sun behind panel
-
-                    # slight concerns that this is just for horizontal panels?
-                    c_zenith = np.cos(lat) * np.cos(decl) * np.cos(
-                        hr_angle[hr]
-                    ) + np.sin(lat) * np.sin(decl)
-                    zenith = np.arccos(c_zenith)
-                    if zenith > np.pi / 2 or c_zenith < 0:
-                        continue
-
-                    geometric_factor = c_incident / c_zenith
-
-                    # extraterrestial radiation incident on the normal
-                    g_on = solar_constant * (
-                        1 + 0.033 * np.cos(np.deg2rad(360 * diy / 365))
+                    firstdatadatetime = datetime.datetime.strptime(
+                        firstrow[0], "%d/%m/%Y %H:%M"
                     )
 
-                    irradiation0 = (
-                        (12 / np.pi)
-                        * g_on
-                        * (
-                            np.cos(lat) * np.cos(decl) * diff_hr_angle[hr]
-                            + (np.pi * 15 / 180) * np.sin(lat) * np.sin(decl)
-                        )
-                    )
+                    self.firstdatadatetime = firstdatadatetime
+                    # find the number of hours between the first date in the data and the first date in the simulation
+                    firstdatadatehours = (
+                        self.startdatetime - firstdatadatetime
+                    ).total_seconds() / 3600
+                    self.loadindex = int(firstdatadatehours)
 
-                    # print all the variables which went into irradiation0, on one line
-                    if irradiation0 < 0:
-                        continue
+            operationalindex = int(
+                (
+                    self.operationaldatetime[index] - self.firstdatadatetime
+                ).total_seconds()
+                / 3600
+            )
 
-                    clearness_index = irradiation / irradiation0
-                    if clearness_index > 1:
-                        irradiation = irradiation0
+            if operationalindex < self.loadindex:
+                rangeselectorindex = self.loadindex
+            else:
+                rangeselectorindex = operationalindex
 
-                    if clearness_index <= 0.22:
-                        erbs_ratio = 1 - 0.09 * clearness_index
-                    elif clearness_index <= 0.8:
-                        erbs_ratio = (
-                            0.9511
-                            - 0.1604 * clearness_index
-                            + 4.388 * np.power(clearness_index, 2)
-                            - 16.638 * np.power(clearness_index, 3)
-                            + 12.336 * np.power(clearness_index, 4)
-                        )
-                    else:
-                        erbs_ratio = 0.165
+            irradiances = np.loadtxt(
+                self.data_path + str(site) + ".csv",
+                delimiter=",",
+                skiprows=1,
+                usecols=(2),
+            )
+            irradiances = irradiances[
+                rangeselectorindex : self.loadindex + len(self.n_good_points)
+            ]
+            irradiances = np.array(irradiances)
+            powerout = np.zeros_like(
+                irradiances
+            )  # creates zeros array to hold the power
+            irradiances /= 3.6  # kJ -> Wh
+            # irradiances /= 1.051  # merra2 overestimates
+            hours = [
+                i % 24 for i in range(len(irradiances))
+            ]  # hours of the day, repeating for each day
+            hourarray = np.array(hours)
+            diy = [
+                (self.operationaldatetime[index] + datetime.timedelta(hours=i))
+                .timetuple()
+                .tm_yday
+                for i in range(len(irradiances))
+            ]
+            diy = np.array(diy)
+            hr_angles = day_hr_angle * int(
+                len(irradiances) / 24
+            )  # repeats the hr_angles for each day
+            hr_angles = np.array(hr_angles)
 
-                    # got to herea
-                    D_beam = (
-                        irradiation - erbs_ratio * irradiation
-                    ) * geometric_factor  # Wh/m2
-                    D_dhi = irradiation * erbs_ratio * (1 + np.cos(self.tilt)) / 2
-                    D = D_beam + D_dhi
+            diff_hr_angle = day_diff_hr_angle * int(len(irradiances) / 24)
+            diff_hr_angle = np.array(diff_hr_angle)
+            decl = 23.45 * np.sin(np.deg2rad(360 * (284 + diy) / 365))
+            decl = np.deg2rad(decl)
+            lat = site_lat[site]
 
-                    site_power[dn * 24 + hr] += (
-                        D
-                        * plant_area[index]
-                        * self.efficiency
-                        * self.performance_ratio
-                        * 1e-6
-                    )
+            c_incident = (
+                np.sin(decl) * np.sin(lat) * np.cos(self.tilt)
+                - (np.sin(decl) * np.cos(lat) * np.sin(self.tilt) * np.cos(self.orient))
+                + (np.cos(decl) * np.cos(lat) * np.cos(self.tilt) * np.cos(hr_angles))
+                + (
+                    np.cos(decl)
+                    * np.sin(lat)
+                    * np.sin(self.tilt)
+                    * np.cos(self.orient)
+                    * np.cos(hr_angles)
+                )
+                + (
+                    np.cos(decl)
+                    * np.sin(self.tilt)
+                    * np.sin(self.orient)
+                    * np.sin(hr_angles)
+                )
+            )
 
-            # somewhere here I need to do the smoothing fix on final output
-            for d in self.date_map:
-                if d < self.operationaldatetime[index]:
-                    continue
-                self.max_possible_output += self.plant_capacities[index] * 24
-                dn = self.date_map[d]
-                t = 0
-                if sum(site_power[dn * 24 : (dn + 1) * 24]) == 0:
-                    continue
-                while site_power[dn * 24 + t] == 0:
-                    t += 1
-                # sunrise
-                site_power[dn * 24 + t] = 0.1 * site_power[dn * 24 + t + 2]
-                site_power[dn * 24 + t + 1] = 0.33 * site_power[dn * 24 + t + 2]
+            incident = np.arccos(c_incident)
+            # this is the angle between the sun and the panel
+            sunbehindpanel = incident > np.pi / 2
+            # if the sun is behind the panel, the incident angle is greater than 90 degrees
 
-                t = 23
-                while site_power[dn * 24 + t] == 0:
-                    t -= 1
-                # sunset
-                site_power[dn * 24 + t] = 0.1 * site_power[dn * 24 + t - 2]
-                site_power[dn * 24 + t - 1] = (
-                    0.33 * site_power[dn * 24 + t - 2]
-                )  # CQ correction to typos
-            for t in range(len(site_power)):
-                self.power_out[t] += site_power[t]
+            # slight concerns that this is just for horizontal panels?
+            c_zenith = np.cos(lat) * np.cos(decl) * np.cos(hr_angles) + np.sin(
+                lat
+            ) * np.sin(decl)
+            zenith = np.arccos(c_zenith)
+            zentihtoohigh = (
+                zenith > np.pi / 2
+            )  # if the zenith angle is greater than 90, the sun is below the horizon
+            zenithtoolow = (
+                c_zenith < 0
+            )  # if c_zenith is less than zero, the sun is below the horizon
+
+            c_zenith[zenithtoolow] = 1  # need to set these to 1 to avoid divide by zero
+            geometric_factor = c_incident / c_zenith
+
+            sunwrong = (
+                zenithtoolow | sunbehindpanel | zentihtoohigh
+            )  # combines the three conditions
+            geometric_factor[sunwrong] = (
+                0  # set the geometric factor to zero for these values
+            )
+
+            # extraterrestial radiation incident on the normal
+            g_on = solar_constant * (1 + 0.033 * np.cos(np.deg2rad(360 * diy / 365)))
+            irradiation0 = (
+                (12 / np.pi)
+                * g_on
+                * (
+                    np.cos(lat) * np.cos(decl) * diff_hr_angle
+                    + (np.pi * 15 / 180) * np.sin(lat) * np.sin(decl)
+                )
+            )
+
+            # we don't want to divide by zero, but sometimes the irradiation0 is zero
+            # in that case, we will find the index where this happens, set irradiation0 to 1,
+            # and then subsequently set the power out to zero
+            noirradiance = irradiation0 < 0
+            irradiation0[noirradiance] = 1
+
+            clearness_index = irradiances / irradiation0
+            # finds indeces where the clearness index is greater than 1
+            clearness1mask = np.where(clearness_index > 1)
+            irradiances[clearness1mask] = irradiation0[clearness1mask]
+
+            erbs_ratio = np.ones_like(clearness_index) * 0.165
+            erbs_ratio[clearness_index <= 0.22] = (
+                1 - 0.09 * clearness_index[clearness_index <= 0.22]
+            )
+            midclearness = (clearness_index > 0.22) & (clearness_index <= 0.8)
+
+            erbs_ratio[midclearness] = (
+                0.9511
+                - 0.1604 * clearness_index[midclearness]
+                + 4.388 * np.power(clearness_index[midclearness], 2)
+                - 16.638 * np.power(clearness_index[midclearness], 3)
+                + 12.336 * np.power(clearness_index[midclearness], 4)
+            )
+
+            D_beam = (
+                irradiances - erbs_ratio * irradiances
+            ) * geometric_factor  # Wh/m2
+            D_dhi = irradiances * erbs_ratio * (1 + np.cos(self.tilt)) / 2
+            D = D_beam + D_dhi
+
+            poweroutvals = (
+                D * plant_area[index] * self.efficiency * self.performance_ratio * 1e-6
+            )
+
+            poweroutvals[sunwrong] = 0
+            poweroutvals[noirradiance] = 0
+
+            # quit()
+            # the previous code smoothed the ramp up and down rates. We will do the same, using the same technique
+            # to smooth the data, we find the first and last times in each day where the power is non-zero
+            # The power 2 hours after and before these times is then used as a baseline
+            # the sunrise and sunset times are then set to 10% of the power 2 hours after and before these times
+            # the times in between are then set to 33% of the power 2 hours after and before these times
+            sunrises = []
+            sunsets = []
+            night = True
+            for j in range(len(poweroutvals)):
+                power = poweroutvals[j]
+                if power != 0 and night:
+                    sunrises.append(j)
+                    night = False
+                if power == 0 and not night:
+                    sunsets.append(j - 1)
+                    night = True
+
+            sunrisearray = np.array(sunrises)
+            sunsetarray = np.array(sunsets)
+
+            sunrisingselector = sunrisearray + 1
+            sunrisenselectors = sunrisearray + 2
+            sunsettingselector = sunsetarray - 1
+            sunsetselectors = sunsetarray - 2
+            poweroutvals[sunrisearray] = 0.1 * poweroutvals[sunrisenselectors]
+            poweroutvals[sunrisingselector] = 0.33 * poweroutvals[sunrisenselectors]
+            poweroutvals[sunsetarray] = 0.1 * poweroutvals[sunsetselectors]
+            poweroutvals[sunsettingselector] = 0.33 * poweroutvals[sunsetselectors]
+            self.power_out_array[rangeselectorindex - self.loadindex :] += poweroutvals
+            self.power_out = self.power_out_array.tolist()
+
+            # for i in range(24 * 4):
+            #     print(f"{i} {poweroutvals[i]}")
+            self.max_possible_output += self.plant_capacities[index] * len(poweroutvals)
+            # this needs checking
+
+            # # somewhere here I need to do the smoothing fix on final output
+            # for d in self.date_map:
+            #     if d < self.operationaldatetime[index]:
+            #         continue
+            #     self.max_possible_output += self.plant_capacities[index] * 24
+            #     dn = self.date_map[d]
+            #     t = 0
+            #     if sum(site_power[dn * 24 : (dn + 1) * 24]) == 0:
+            #         continue
+            #     while site_power[dn * 24 + t] == 0:
+            #         t += 1
+            #     # sunrise
+            #     site_power[dn * 24 + t] = 0.1 * site_power[dn * 24 + t + 2]
+            #     site_power[dn * 24 + t + 1] = 0.33 * site_power[dn * 24 + t + 2]
+
+            #     t = 23
+            #     while site_power[dn * 24 + t] == 0:
+            #         t -= 1
+            #     # sunset
+            #     site_power[dn * 24 + t] = 0.1 * site_power[dn * 24 + t - 2]
+            #     site_power[dn * 24 + t - 1] = (
+            #         0.33 * site_power[dn * 24 + t - 2]
+            #     )  # CQ correction to typo
+
+            # for t in range(len(site_power)):
+            #     self.power_out[t] += site_power[t]
         # the power values have been generated for each point. However, points with missing data are
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
         # currently installed capacity: the values should not change
+        if self.monthsubsample:
+            self.power_out = self.power_out[self.monthindexlist]
         self.scale_output(self.total_installed_capacity)
 
 
@@ -1513,6 +1663,7 @@ class OnshoreWindModel500(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1535,6 +1686,7 @@ class OnshoreWindModel500(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
         # based on Vestas V39
 
@@ -1553,6 +1705,7 @@ class OnshoreWindModel1000(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1575,6 +1728,7 @@ class OnshoreWindModel1000(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
         # based on AN Bonus 1000/54
 
@@ -1593,6 +1747,7 @@ class OnshoreWindModel1500(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1615,6 +1770,7 @@ class OnshoreWindModel1500(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
         # based on Vestas V82
 
@@ -1633,6 +1789,7 @@ class OnshoreWindModel2000(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1655,6 +1812,7 @@ class OnshoreWindModel2000(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -1672,6 +1830,7 @@ class OnshoreWindModel2000(OnshoreWindModel):
 #         year_online=None,
 #         month_online=None,
 #         force_run=False,
+limits = ([0, 1000000],)
 #     ):
 #         super().__init__(
 #             sites=sites,
@@ -1694,6 +1853,7 @@ class OnshoreWindModel2000(OnshoreWindModel):
 #             year_online=year_online,
 #             month_online=month_online,
 #             force_run=force_run,
+limits = limits
 #         )
 #         # based on the Siemens SWT-2.3-108
 
@@ -1712,6 +1872,7 @@ class OnshoreWindModel2500(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1734,6 +1895,7 @@ class OnshoreWindModel2500(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
         # based on GE 2.5-100
 
@@ -1752,6 +1914,7 @@ class OnshoreWindModel3000(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1774,6 +1937,7 @@ class OnshoreWindModel3000(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -1791,6 +1955,7 @@ class OnshoreWindModel3600(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1813,6 +1978,7 @@ class OnshoreWindModel3600(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -1830,6 +1996,7 @@ class OnshoreWindModel4000(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1852,6 +2019,7 @@ class OnshoreWindModel4000(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -1869,6 +2037,7 @@ class OnshoreWindModel5000(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1891,6 +2060,7 @@ class OnshoreWindModel5000(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -1908,6 +2078,7 @@ class OnshoreWindModel6000(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1930,6 +2101,7 @@ class OnshoreWindModel6000(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -1947,6 +2119,7 @@ class OnshoreWindModel6600(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -1969,6 +2142,7 @@ class OnshoreWindModel6600(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -1986,6 +2160,7 @@ class OnshoreWindModel7000(OnshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2008,6 +2183,7 @@ class OnshoreWindModel7000(OnshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -2025,6 +2201,7 @@ class OffshoreWindModel2000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2047,6 +2224,7 @@ class OffshoreWindModel2000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
         # based on Vestas v80 2MW: https://en.wind-turbine-models.com/turbines/19-vestas-v80-2.0
@@ -2066,6 +2244,7 @@ class OffshoreWindModel3000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2088,6 +2267,7 @@ class OffshoreWindModel3000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
         # based on Vestas V90 3MW: https://en.wind-turbine-models.com/turbines/603-vestas-v90-3.0
@@ -2107,6 +2287,7 @@ class OffshoreWindModel5000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2129,6 +2310,7 @@ class OffshoreWindModel5000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
         # Based on Repower 5M: https://www.thewindpower.net/turbine_en_14_repower_5m.php
@@ -2148,6 +2330,7 @@ class OffshoreWindModel6000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2170,6 +2353,7 @@ class OffshoreWindModel6000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
         # based on Siemens SWT-6.0-154: https://en.wind-turbine-models.com/turbines/657-siemens-swt-6.0-154
         # hub height is an estimation, as it's site specific
@@ -2189,6 +2373,7 @@ class OffshoreWindModel7000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2211,6 +2396,7 @@ class OffshoreWindModel7000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
         # based on Siemens SWT-7.0-154: https://en.wind-turbine-models.com/turbines/1102-siemens-swt-7.0-154
         # hub height is an estimation, as it's site specific
@@ -2230,6 +2416,7 @@ class OffshoreWindModel8000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2252,6 +2439,7 @@ class OffshoreWindModel8000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
         # based on Vestas V164-8MW: https://en.wind-turbine-models.com/turbines/318-vestas-v164-8.0
 
@@ -2270,6 +2458,7 @@ class OffshoreWindModel10000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2292,6 +2481,7 @@ class OffshoreWindModel10000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -2309,6 +2499,7 @@ class OffshoreWindModel12000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2331,6 +2522,7 @@ class OffshoreWindModel12000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -2348,6 +2540,7 @@ class OffshoreWindModel15000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2370,6 +2563,7 @@ class OffshoreWindModel15000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -2387,6 +2581,7 @@ class OffshoreWindModel17000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2409,6 +2604,7 @@ class OffshoreWindModel17000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
@@ -2426,6 +2622,7 @@ class OffshoreWindModel20000(OffshoreWindModel):
         year_online=None,
         month_online=None,
         force_run=False,
+        limits=[0, 1000000],
     ):
         super().__init__(
             sites=sites,
@@ -2448,6 +2645,7 @@ class OffshoreWindModel20000(OffshoreWindModel):
             year_online=year_online,
             month_online=month_online,
             force_run=force_run,
+            limits=limits,
         )
 
 
