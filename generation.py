@@ -632,6 +632,7 @@ class OffshoreWindModel(GenerationModel):
         month_online=None,
         force_run=False,
         limits=[0, 1000000],
+        power_curve=None,
     ):
         """
         == description ==
@@ -658,8 +659,12 @@ class OffshoreWindModel(GenerationModel):
         turbine_size: (float) size of each turbine in MW
         data_path: (str) path to file containing raw data
         save_path: (str) path to file where output will be saved
-        save: (boo) determines whether to save the results of the run
-
+        save: (bool) determines whether to save the results of the run
+        year_online: list(int) year the generation unit was installed, at each site
+        month_online: list(int) month the generation unit was installed, at each site
+        force_run: (bool) determines whether to rerun the model
+        limits: (Array<float>) used to define the max and min installed generation in MWh ([min,max])
+        power_curve: (Array<float>) power curve for the turbine
         == returns ==
         None
         """
@@ -692,7 +697,7 @@ class OffshoreWindModel(GenerationModel):
         self.hub_height = hub_height  # added by CQ
         self.data_height = data_height  # added by CQ
         self.alpha = alpha  # added by CQ
-
+        self.power_curve = power_curve
         file_name = get_filename(
             sites, "osw_" + str(turbine_size), year_min, year_max, months
         )
@@ -765,29 +770,34 @@ class OffshoreWindModel(GenerationModel):
         )
         area = np.pi * self.rotor_diameter * self.rotor_diameter / 4
         b = self.tilt
+        if self.power_curve is None:
+            # create the power curve at intervals of 0.1
+            v = np.linspace(0, self.v_cut_out, self.v_cut_out*10 +1) # wind speeds (m/s)
+            P = [0.0] * len(v)  # power output (MW)
+            # assume a fixed Cp - calculate this value using the turbine's rated wind speed and rated power
+            Cp = (
+                self.turbine_size
+                * 1e6
+                / (0.5 * self.air_density * area * np.power(self.rated_wind_speed, 3))
+            )
 
-        # create the power curve at intervals of 0.1
-        v = np.arange(0, self.v_cut_out, 0.1)  # wind speeds (m/s)
-        P = [0.0] * len(v)  # power output (MW)
-        # assume a fixed Cp - calculate this value using the turbine's rated wind speed and rated power
-        Cp = (
-            self.turbine_size
-            * 1e6
-            / (0.5 * self.air_density * area * np.power(self.rated_wind_speed, 3))
-        )
+            for i in range(len(v)):
+                if v[i] < self.v_cut_in:
+                    continue
 
-        for i in range(len(v)):
-            if v[i] < self.v_cut_in:
-                continue
+                # P[i] = 0.5*c_p(tsr, b)* self.air_density*area*np.power(v[i], 3)
+                P[i] = 0.5 * Cp * self.air_density * area * np.power(v[i], 3)
+                P[i] = P[i] / 1e6  # W to MW
 
-            # P[i] = 0.5*c_p(tsr, b)* self.air_density*area*np.power(v[i], 3)
-            P[i] = 0.5 * Cp * self.air_density * area * np.power(v[i], 3)
-            P[i] = P[i] / 1e6  # W to MW
+                if P[i] > self.turbine_size:
+                    P[i] = self.turbine_size
 
-            if P[i] > self.turbine_size:
-                P[i] = self.turbine_size
-
-        Parray = np.array(P)
+            Parray = np.array(P)
+        else:
+            # check that the power curve tops out at the right wind speed
+            if self.power_curve[-1][0] < self.v_cut_out:
+                raise Exception("Power curve does not extend to cut out wind speed")
+            Parray = np.array([x[1] for x in self.power_curve])
         # Next get the wind data
 
         for si in range(len(self.sites)):
@@ -863,12 +873,13 @@ class OffshoreWindModel(GenerationModel):
             site_speeds = site_speeds * np.power(
                 self.hub_height / self.data_height, self.alpha
             )
-            site_speeds[site_speeds > v[-1]] = v[-1]  # prevents overload
+
+            site_speeds[site_speeds >= self.v_cut_out] =self.v_cut_out  # prevents overload
             p1s = np.floor(site_speeds / 0.1).astype(
                 int
             )  # gets the index of the lower bound of the interpolation
             p2s = p1s + 1  # gets the index of the upper bound of the interpolation
-            p2s[p2s == len(P)] = p1s[p2s == len(P)]
+            p2s[p2s == len(Parray)] = p1s[p2s == len(Parray)]
             fs = (site_speeds % 0.1) / 0.1
             poweroutvals = (fs * Parray[p2s] + (1 - fs) * Parray[p1s]) * self.n_turbine[
                 si
@@ -1660,6 +1671,7 @@ class OnshoreWindModel500(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -1687,6 +1699,7 @@ class OnshoreWindModel500(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
         # based on Vestas V39
 
@@ -1702,6 +1715,7 @@ class OnshoreWindModel1000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -1729,6 +1743,7 @@ class OnshoreWindModel1000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
         # based on AN Bonus 1000/54
 
@@ -1744,6 +1759,7 @@ class OnshoreWindModel1500(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -1771,6 +1787,7 @@ class OnshoreWindModel1500(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
         # based on Vestas V82
 
@@ -1786,6 +1803,7 @@ class OnshoreWindModel2000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -1813,6 +1831,7 @@ class OnshoreWindModel2000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
 
@@ -1830,7 +1849,7 @@ class OnshoreWindModel2000(OnshoreWindModel):
 #         year_online=None,
 #         month_online=None,
 #         force_run=False,
-limits = ([0, 1000000],)
+# limits = ([0, 1000000],)
 #     ):
 #         super().__init__(
 #             sites=sites,
@@ -1853,7 +1872,7 @@ limits = ([0, 1000000],)
 #             year_online=year_online,
 #             month_online=month_online,
 #             force_run=force_run,
-limits = limits
+# limits = limits
 #         )
 #         # based on the Siemens SWT-2.3-108
 
@@ -1869,6 +1888,7 @@ class OnshoreWindModel2500(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -1896,6 +1916,7 @@ class OnshoreWindModel2500(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
         # based on GE 2.5-100
 
@@ -1911,6 +1932,7 @@ class OnshoreWindModel3000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -1938,6 +1960,7 @@ class OnshoreWindModel3000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
 
@@ -1952,6 +1975,7 @@ class OnshoreWindModel3600(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -1979,6 +2003,7 @@ class OnshoreWindModel3600(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
 
@@ -1993,6 +2018,7 @@ class OnshoreWindModel4000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2020,6 +2046,7 @@ class OnshoreWindModel4000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
 
@@ -2034,6 +2061,7 @@ class OnshoreWindModel5000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2061,6 +2089,7 @@ class OnshoreWindModel5000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
 
@@ -2075,6 +2104,7 @@ class OnshoreWindModel6000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2102,6 +2132,7 @@ class OnshoreWindModel6000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
 
@@ -2116,6 +2147,7 @@ class OnshoreWindModel6600(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2143,6 +2175,7 @@ class OnshoreWindModel6600(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
 
@@ -2157,6 +2190,7 @@ class OnshoreWindModel7000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2184,6 +2218,7 @@ class OnshoreWindModel7000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
 
@@ -2198,6 +2233,7 @@ class OffshoreWindModel2000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2225,6 +2261,7 @@ class OffshoreWindModel2000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
         # based on Vestas v80 2MW: https://en.wind-turbine-models.com/turbines/19-vestas-v80-2.0
@@ -2241,6 +2278,7 @@ class OffshoreWindModel3000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2255,8 +2293,8 @@ class OffshoreWindModel3000(OffshoreWindModel):
             air_density=1.23,
             rotor_diameter=90,
             rated_rotor_rpm=18.4,
-            rated_wind_speed=15,
-            v_cut_in=4,
+            rated_wind_speed=13,
+            v_cut_in=3,
             v_cut_out=25,
             n_turbine=n_turbine,
             turbine_size=3,
@@ -2268,6 +2306,7 @@ class OffshoreWindModel3000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
         # based on Vestas V90 3MW: https://en.wind-turbine-models.com/turbines/603-vestas-v90-3.0
@@ -2284,6 +2323,7 @@ class OffshoreWindModel5000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2311,6 +2351,7 @@ class OffshoreWindModel5000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
         # Based on Repower 5M: https://www.thewindpower.net/turbine_en_14_repower_5m.php
@@ -2327,6 +2368,7 @@ class OffshoreWindModel6000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2354,6 +2396,7 @@ class OffshoreWindModel6000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
         # based on Siemens SWT-6.0-154: https://en.wind-turbine-models.com/turbines/657-siemens-swt-6.0-154
         # hub height is an estimation, as it's site specific
@@ -2370,6 +2413,7 @@ class OffshoreWindModel7000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2397,6 +2441,7 @@ class OffshoreWindModel7000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
         # based on Siemens SWT-7.0-154: https://en.wind-turbine-models.com/turbines/1102-siemens-swt-7.0-154
         # hub height is an estimation, as it's site specific
@@ -2413,6 +2458,7 @@ class OffshoreWindModel8000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2440,6 +2486,7 @@ class OffshoreWindModel8000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
         # based on Vestas V164-8MW: https://en.wind-turbine-models.com/turbines/318-vestas-v164-8.0
 
@@ -2455,6 +2502,7 @@ class OffshoreWindModel10000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2482,6 +2530,7 @@ class OffshoreWindModel10000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
 
@@ -2496,6 +2545,7 @@ class OffshoreWindModel12000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2523,6 +2573,7 @@ class OffshoreWindModel12000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
 
@@ -2537,6 +2588,7 @@ class OffshoreWindModel15000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2564,6 +2616,7 @@ class OffshoreWindModel15000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
 
@@ -2578,6 +2631,7 @@ class OffshoreWindModel17000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2605,6 +2659,7 @@ class OffshoreWindModel17000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
 
@@ -2619,6 +2674,7 @@ class OffshoreWindModel20000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
@@ -2646,6 +2702,7 @@ class OffshoreWindModel20000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            power_curve=power_curve,
         )
 
 
