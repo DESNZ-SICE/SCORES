@@ -261,10 +261,18 @@ class GUIRun:
 
             generationobjects["Onshore"] = onshoregenobjects
 
+        solarloadfactor = generationobjects["Solar"].get_load_factor()
+        offshoreloadfactors = [
+            i.get_load_factor() for i in generationobjects["Offshore"]
+        ]
+        onshoreloadfactors = [i.get_load_factor() for i in generationobjects["Onshore"]]
+
+        offshoreturbsizes = [i.turbine_size for i in generationobjects["Offshore"]]
+        onshoreturbsizes = [i.turbine_size for i in generationobjects["Onshore"]]
+        solarpowerout = [generationobjects["Solar"].power_out]
+        offshorepowerouts = [i.power_out for i in generationobjects["Offshore"]]
+        onshorepowerouts = [i.power_out for i in generationobjects["Onshore"]]
         if Gentimeseries:
-            solarpowerout = [generationobjects["Solar"].power_out]
-            offshorepowerouts = [i.power_out for i in generationobjects["Offshore"]]
-            onshorepowerouts = [i.power_out for i in generationobjects["Onshore"]]
 
             combinedpoweroutput = solarpowerout + offshorepowerouts + onshorepowerouts
             stackedpoweroutputs = np.vstack(combinedpoweroutput)
@@ -277,6 +285,51 @@ class GUIRun:
                 for i in range(len(totalpowerout)):
                     f.write(f"{currenttimestamp},{totalpowerout[i]}\n")
                     currenttimestamp = currenttimestamp + datetime.timedelta(hours=1)
+        if Loadfactors:
+            with open(outputfolder + "/LoadFactors.csv", "w") as f:
+                f.write("Generator Type,Generator Size (MW),Load Factor\n")
+                f.write(f"Solar, ,{solarloadfactor}\n")
+                for i in range(len(offshoreloadfactors)):
+                    f.write(
+                        f"Offshore,{offshoreturbsizes[i]},{offshoreloadfactors[i]}\n"
+                    )
+                for i in range(len(onshoreloadfactors)):
+                    f.write(f"Onshore,{onshoreturbsizes[i]},{onshoreloadfactors[i]}\n")
+        if Report:
+            with open(outputfolder + "/Report.txt", "w") as f:
+                f.write("Report\n")
+
+                f.write("Solar\n")
+                f.write(f"Installed capacity: {np.sum(solarcapacities)}MW\n")
+                f.write(f"Load factor: {solarloadfactor}\n")
+                f.write(f"Total power output: {np.sum(solarpowerout)/1000}GWh\n")
+                f.write("--------------------\n")
+                f.write("Offshore\n")
+                f.write(
+                    f"Total installed capacity: {np.sum([i.turbine_size*np.sum(i.n_turbine) for i in generationobjects['Offshore']])}MW\n"
+                )
+                for i in range(len(offshoreloadfactors)):
+                    f.write(
+                        f"Load factor for {offshoreturbsizes[i]}MW turbines: {offshoreloadfactors[i]}\n"
+                    )
+                    f.write(
+                        f"Total power output for {offshoreturbsizes[i]}MW turbines: {np.sum(offshorepowerouts[i])/1000}GWh\n"
+                    )
+                    f.write("------\n")
+                f.write("--------------------\n")
+                f.write("Onshore\n")
+                f.write(
+                    f"Total installed capacity: {np.sum([i.turbine_size*np.sum(i.n_turbine) for i in generationobjects['Onshore']])}MW\n"
+                )
+                for i in range(len(onshoreloadfactors)):
+                    f.write(
+                        f"Load factor for {onshoreturbsizes[i]}MW turbines: {onshoreloadfactors[i]}\n"
+                    )
+                    f.write(
+                        f"Total power output for {onshoreturbsizes[i]}MW turbines: {np.sum(onshorepowerouts[i])/1000}GWh\n"
+                    )
+                    f.write("------\n")
+                f.write("--------------------\n")
 
 
 if __name__ == "__main__":
