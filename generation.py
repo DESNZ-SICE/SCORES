@@ -89,8 +89,9 @@ class GenerationModel:
             if d.month in self.months:
                 self.date_map[d] = n
                 n += 1
-                d += datetime.timedelta(1)
+            d += datetime.timedelta(1)
 
+        print("datemap made")
         # if we're not using all of the months of the year, we need to filter out the months we want later
         if self.monthsubsample:
             d = datetime.datetime(self.year_min, min(self.months), 1)
@@ -100,6 +101,7 @@ class GenerationModel:
                 if d.month in self.months:
                     self.monthindexlist.append(counter)
                 counter += 1
+                d += datetime.timedelta(hours=1)
         self.operationaldatetime = [
             datetime.datetime(self.year_online[i], self.month_online[i], 1)
             for i in range(len(self.year_online))
@@ -113,6 +115,7 @@ class GenerationModel:
 
         self.power_out_array = np.array(self.power_out)
         self.n_good_points = [0] * numberofpoints
+        print("Model initialised")
 
     def scale_output(self, installed_capacity, scale=False):
         """
@@ -772,7 +775,9 @@ class OffshoreWindModel(GenerationModel):
         b = self.tilt
         if self.power_curve is None:
             # create the power curve at intervals of 0.1
-            v = np.linspace(0, self.v_cut_out, self.v_cut_out*10 +1) # wind speeds (m/s)
+            v = np.linspace(
+                0, self.v_cut_out, self.v_cut_out * 10 + 1
+            )  # wind speeds (m/s)
             P = [0.0] * len(v)  # power output (MW)
             # assume a fixed Cp - calculate this value using the turbine's rated wind speed and rated power
             Cp = (
@@ -874,7 +879,9 @@ class OffshoreWindModel(GenerationModel):
                 self.hub_height / self.data_height, self.alpha
             )
 
-            site_speeds[site_speeds >= self.v_cut_out] =self.v_cut_out  # prevents overload
+            site_speeds[site_speeds >= self.v_cut_out] = (
+                self.v_cut_out
+            )  # prevents overload
             p1s = np.floor(site_speeds / 0.1).astype(
                 int
             )  # gets the index of the lower bound of the interpolation
