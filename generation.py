@@ -91,31 +91,23 @@ class GenerationModel:
                 n += 1
             d += datetime.timedelta(1)
 
-        print("datemap made")
-        # if we're not using all of the months of the year, we need to filter out the months we want later
-        if self.monthsubsample:
-            d = datetime.datetime(self.year_min, min(self.months), 1)
-            counter = 0
-            self.monthindexlist = []
-            while d.year <= self.year_max:
-                if d.month in self.months:
-                    self.monthindexlist.append(counter)
-                counter += 1
-                d += datetime.timedelta(hours=1)
+
         self.operationaldatetime = [
             datetime.datetime(self.year_online[i], self.month_online[i], 1)
             for i in range(len(self.year_online))
         ]
         # our power_out arrays will be created here. If we're subsampling for particular months,
         # these arrays will be too long: we'll filter them after running the model
-        enddatetime = datetime.datetime(year_max + 1, 1, 1)
+        if max(self.months) == 12:
+            enddatetime = datetime.datetime(self.year_max + 1, 1, 1)
+        else:
+            enddatetime = datetime.datetime(self.year_max, max(self.months) + 1, 1)
         numberofpoints = int((enddatetime - self.startdatetime).total_seconds() // 3600)
         self.power_out = [0.0] * numberofpoints
         self.power_out_scaled = [0.0] * len(self.power_out)
 
         self.power_out_array = np.array(self.power_out)
         self.n_good_points = [0] * numberofpoints
-        print("Model initialised")
 
     def scale_output(self, installed_capacity, scale=False):
         """
