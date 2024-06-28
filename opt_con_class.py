@@ -22,14 +22,14 @@ def opt_results_to_df(model):
         '''
         
     # Record Built Decisions #
-        df1 = DataFrame({'Total Demand (GWh)': [int(sum(-pyo.value(model.Demand[t]) for t in model.TimeIndex)/1000.0)], 'Total Fossil Fuel (GWh)': [int(sum(pyo.value(model.Pfos[t]) for t in model.TimeIndex)/1000.0)],'Total Curtailement (GWh)': [int(sum(pyo.value(model.Shed[t]) for t in model.TimeIndex)/1000.0)]})
+        df1 = DataFrame({'Total Demand (GWh)': [int(sum(-pyo.value(model.Demand[t]) for t in model.TimeIndex)/1000.0)], 'Total Fossil Fuel (GWh)': [int(sum(pyo.value(model.Pfos[t]) for t in model.TimeIndex)/1000.0)],'Total Curtailment (GWh)': [int(sum(pyo.value(model.Shed[t]) for t in model.TimeIndex)/1000.0)]})
         
     #Need to Work out how to get the price as an output (could do with changing the costs to model parameters instead)
         for g in model.GenIndex:
-                df1['Gen '+str(g) + ' Cap (GW)'] = int(pyo.value(model.GenCapacity[g])/10.0)/100.0
+                df1['Gen '+str(g) + ' Cap (GW)'] = pyo.value(model.GenCapacity[g])/1000
         
         for i in model.StorageIndex:
-                df1['Stor '+str(i) + ' Cap (GWh)'] = int(pyo.value(model.BuiltCapacity[i])/10.0)/100.0
+                df1['Stor '+str(i) + ' Cap (GWh)'] = pyo.value(model.BuiltCapacity[i])/1000
         
         for k in model.FleetIndex:
             for b in model.ChargeType:
@@ -54,8 +54,8 @@ def opt_results_to_df(model):
         cum_cap = 0.0
         
         for g in model.GenIndex:
-            df2['Gen '+str(g) + ' Capital (£m/yr)'] = int(pyo.value(model.GenCapacity[g])*pyo.value(model.GenCosts[g,0])/1000000)
-            df2['Gen '+str(g) + ' Operation (£m/yr)'] = int(pyo.value(model.GenCapacity[g])*pyo.value(model.GenCosts[g,1])*sum(model.NormalisedGen[g,t] for t in model.TimeIndex)/(n_yr*1000000))
+            df2['Gen '+str(g) + ' Capital (£m/yr)'] = pyo.value(model.GenCapacity[g]*pyo.value(model.GenCosts[g,0])/1000000)
+            df2['Gen '+str(g) + ' Operation (£m/yr)'] = pyo.value(model.GenCapacity[g]*pyo.value(model.GenCosts[g,1])*sum(model.NormalisedGen[g,t] for t in model.TimeIndex)/(n_yr*1000000))
             cum_cap += pyo.value(model.GenCapacity[g])*pyo.value(model.GenCosts[g,0])
             cum_op += pyo.value(model.GenCapacity[g])*pyo.value(model.GenCosts[g,1])*sum(model.NormalisedGen[g,t] for t in model.TimeIndex)
             
@@ -63,8 +63,8 @@ def opt_results_to_df(model):
             #print('Gen Use: (£m/yr)',int(pyo.value(model.GenCapacity[g])*pyo.value(model.GenCosts[g,1])*sum(model.NormalisedGen[g,t] for t in model.TimeIndex)/(n_yr*1000000)))
         
         for i in model.StorageIndex:
-            df2['Stor '+str(i) + ' Capital (£m/yr)'] =  int(pyo.value(model.StorCosts[i,0]) * pyo.value(model.BuiltCapacity[i])/1000000)
-            df2['Stor '+str(i) + ' Operation (£m/yr)'] = int(sum(pyo.value(model.StorCosts[i,1]) * pyo.value(model.D[i,t]) for t in model.TimeIndex)/(n_yr*1000000))
+            df2['Stor '+str(i) + ' Capital (£m/yr)'] =  pyo.value(model.StorCosts[i,0]) * pyo.value(model.BuiltCapacity[i])/1000000
+            df2['Stor '+str(i) + ' Operation (£m/yr)'] = sum(pyo.value(model.StorCosts[i,1]) * pyo.value(model.D[i,t]) for t in model.TimeIndex)/(n_yr*1000000)
             cum_cap += pyo.value(model.StorCosts[i,0]) * pyo.value(model.BuiltCapacity[i])
             cum_op +=sum(pyo.value(model.StorCosts[i,1]) * pyo.value(model.D[i,t]) for t in model.TimeIndex)
             
