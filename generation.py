@@ -265,7 +265,7 @@ class NuclearModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        capex=6000000,
+        capex=4000000,
         opex=50000,
         variable_cost=2,
         data_path="",
@@ -276,7 +276,8 @@ class NuclearModel(GenerationModel):
         capacities=[1000],
         limits=[0, 1000000],
         lifetime=40,
-        hurdlerate=0.052,
+        hurdlerate=0.1,
+        loadfactor=0.77,
     ):
         """
         == description ==
@@ -327,6 +328,7 @@ class NuclearModel(GenerationModel):
         self.power_out = np.array(self.power_out)
         self.total_installed_capacity = sum(capacities)
         self.plant_capacities = capacities
+        self.loadfactor = loadfactor
         self.run_model()
 
     def __str__(self):
@@ -344,7 +346,9 @@ class NuclearModel(GenerationModel):
             timedelta = self.startdatetime - operationaltime
             timedeltahours = timedelta.days * 24 + timedelta.seconds / 3600
             timedeltahours = int(timedeltahours)
-            self.power_out[timedeltahours:] += self.plant_capacities[sitenum]
+            self.power_out[timedeltahours:] += (
+                self.plant_capacities[sitenum] * self.loadfactor
+            )
         self.scale_output(self.total_installed_capacity)
 
 
