@@ -21,7 +21,8 @@ class GenerationModel:
         year_min,
         year_max,
         months,
-        fixed_cost,
+        capex,
+        opex,
         variable_cost,
         name,
         data_path,
@@ -29,6 +30,8 @@ class GenerationModel:
         limits=[0, 1000000],
         year_online=None,
         month_online=None,
+        lifetime=25,
+        hurdlerate=0.052
     ):
         """
         == description ==
@@ -41,11 +44,14 @@ class GenerationModel:
         year_min: (int) earliest year in simulation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
-        fixed_cost: (float) cost incurred per MW-year of installation in GBP
+        capex: (float) cost per MW of installation in GBP
+        opex: (float) yearly cost per MW of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
         limits: (array<float>) used for .full_optimise to define the max and min installed generation in MWh ([min,max])
         year_online: list(int) year the generation unit was installed, at each site
         month_online: list(int) month the generation unit was installed, at each site
+        lifetime: (int) lifetime of the generation unit in years
+        hurdlerate: (float) hurdle rate for the generation unit
         == returns ==
         None
         """
@@ -53,7 +59,8 @@ class GenerationModel:
         self.year_min = year_min
         self.year_max = year_max
         self.months = months
-        self.fixed_cost = fixed_cost
+        self.fixed_cost = self.calculate_fixed_costs(lifetime, capex, opex, hurdlerate)
+        print("Yearly fixed cost: ", self.fixed_cost)
         self.variable_cost = variable_cost
         self.name = name
         self.data_path = data_path
@@ -239,6 +246,15 @@ class GenerationModel:
         p = self.power_out_scaled.reshape(-1, 24).mean(axis=0)
         return p
 
+    def calculate_fixed_costs(self, lifetime, totalcapex, yearlyopex, hurdlerate):
+        """works out the yearly cost, given the lifetime, total capex, yearly opex, and hurdle rate"""
+
+        yearlyreturncost= (hurdlerate/(1-(1+hurdlerate)**-lifetime))*totalcapex
+        fixed_cost = yearlyreturncost + yearlyopex
+        return fixed_cost
+
+
+
 
 class NuclearModel(GenerationModel):
     def __init__(
@@ -247,8 +263,9 @@ class NuclearModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        fixed_cost=2000000,
-        variable_cost=0,
+        capex=2000000,
+        opex=50000,
+        variable_cost=2,
         data_path="",
         save_path="stored_model_runs/",
         save=True,
@@ -256,6 +273,8 @@ class NuclearModel(GenerationModel):
         month_online=None,
         capacities=[1000],
         limits=[0, 1000000],
+        lifetime=40,
+        hurdlerate=0.052
     ):
         """
         == description ==
@@ -270,7 +289,8 @@ class NuclearModel(GenerationModel):
         year_min: (int) earliest year in sumlation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
-        fixed_cost: (float) cost incurred per MW of installation in GBP
+        Capex: (float) cost incurred per MW of installation in GBP
+        opex: (float) yearly cost per MW of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
         data_path: (str) path to file containing raw data
         save_path: (str) path to file where output will be saved
@@ -290,7 +310,8 @@ class NuclearModel(GenerationModel):
             year_min,
             year_max,
             months,
-            fixed_cost,
+            capex,
+            opex,
             variable_cost,
             "Nuclear",
             data_path,
@@ -298,6 +319,8 @@ class NuclearModel(GenerationModel):
             year_online=year_online,
             month_online=month_online,
             limits=limits,
+            lifetime=lifetime,
+            hurdlerate=hurdlerate
         )
         self.power_out = np.array(self.power_out)
         self.total_installed_capacity = sum(capacities)
@@ -330,7 +353,8 @@ class GeothermalModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        fixed_cost=2000000,
+        capex=2000000,
+        opex=2000000*0.05,
         variable_cost=0,
         data_path="",
         save_path="stored_model_runs/",
@@ -369,7 +393,8 @@ class GeothermalModel(GenerationModel):
             year_min,
             year_max,
             months,
-            fixed_cost,
+            capex,
+            opex,
             variable_cost,
             "Geothermal",
             data_path,
@@ -603,7 +628,8 @@ class OffshoreWindModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        fixed_cost=177843,
+        capex=1189000,
+        opex=29.2*1000,
         variable_cost=1,
         tilt=5,
         air_density=1.23,
@@ -625,6 +651,8 @@ class OffshoreWindModel(GenerationModel):
         force_run=False,
         limits=[0, 1000000],
         power_curve=None,
+        lifetime=25,
+        hurdlerate=0.052
     ):
         """
         == description ==
@@ -638,7 +666,8 @@ class OffshoreWindModel(GenerationModel):
         year_min: (int) earliest year in sumlation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
-        fixed_cost: (float) cost incurred per MW of installation in GBP
+        Capex: (float) cost incurred per MW of installation in GBP
+        opex: (float) yearly cost per MW of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
         tilt: (float) blade tilt in degrees
         air_density: (float) density of air in kg/m3
@@ -667,7 +696,8 @@ class OffshoreWindModel(GenerationModel):
             year_min,
             year_max,
             months,
-            fixed_cost,
+            capex,
+            opex,
             variable_cost,
             "Offshore Wind",
             data_path,
@@ -903,7 +933,8 @@ class SolarModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        fixed_cost=26975,
+        capex=450000,
+        opex=9300,
         variable_cost=0,
         orient=0,
         tilt=22,
@@ -918,6 +949,8 @@ class SolarModel(GenerationModel):
         month_online=None,
         limits=[0, 1000000],
         force_run=False,
+        hurdlerate=0.05,
+        lifetime=35
     ):
         """
         == description ==
@@ -951,7 +984,8 @@ class SolarModel(GenerationModel):
             year_min,
             year_max,
             months,
-            fixed_cost,
+            capex,
+            opex,
             variable_cost,
             "Solar",
             data_path,
@@ -959,6 +993,8 @@ class SolarModel(GenerationModel):
             year_online=year_online,
             month_online=month_online,
             limits=limits,
+            hurdlerate=hurdlerate,
+            lifetime=lifetime,
         )
 
         self.orient = np.deg2rad(orient)  # deg -> rad
@@ -1293,7 +1329,8 @@ class OnshoreWindModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        fixed_cost=114529,
+        capex=1230000,
+        opex=30700,
         variable_cost=6,
         tilt=5,
         air_density=1.23,
@@ -1315,6 +1352,9 @@ class OnshoreWindModel(GenerationModel):
         month_online=None,
         force_run=False,
         limits=[0, 1000000],
+        lifetime=25,
+        hurdlerate=0.052
+    
     ):  # this added by CQ so that a power curve can optionally be imported
         """
         == description ==
@@ -1354,7 +1394,8 @@ class OnshoreWindModel(GenerationModel):
             year_min,
             year_max,
             months,
-            fixed_cost,
+            capex,
+            opex,
             variable_cost,
             "Onshore Wind",
             data_path,
@@ -1362,6 +1403,8 @@ class OnshoreWindModel(GenerationModel):
             year_online=year_online,
             month_online=month_online,
             limits=limits,
+            hurdlerate=hurdlerate,
+            lifetime=lifetime,
         )
 
         # If no values given assume an equl distribution of turbines over sites
