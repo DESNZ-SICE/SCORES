@@ -31,7 +31,7 @@ class GenerationModel:
         year_online=None,
         month_online=None,
         lifetime=25,
-        hurdlerate=0.052
+        hurdlerate=0.052,
     ):
         """
         == description ==
@@ -103,14 +103,16 @@ class GenerationModel:
             datetime.datetime(self.year_online[i], self.month_online[i], 1)
             for i in range(len(self.year_online))
         ]
-        #this creates datetime objects to represent the date at which each generator site went online for the first time. 
+        # this creates datetime objects to represent the date at which each generator site went online for the first time.
 
         # we need to find how many hours the simulations takes place over. This is the number of hours between the start date and the end date
         if max(self.months) == 12:
             enddatetime = datetime.datetime(self.year_max + 1, 1, 1)
         else:
             enddatetime = datetime.datetime(self.year_max, max(self.months) + 1, 1)
-        numberofpoints = int((enddatetime - self.startdatetime).total_seconds() // 3600) #each hour gets a datapoint
+        numberofpoints = int(
+            (enddatetime - self.startdatetime).total_seconds() // 3600
+        )  # each hour gets a datapoint
         self.power_out = [0.0] * numberofpoints
         self.power_out_scaled = [0.0] * len(self.power_out)
 
@@ -249,11 +251,11 @@ class GenerationModel:
     def calculate_fixed_costs(self, lifetime, totalcapex, yearlyopex, hurdlerate):
         """works out the yearly cost, given the lifetime, total capex, yearly opex, and hurdle rate"""
 
-        yearlyreturncost= (hurdlerate/(1-(1+hurdlerate)**-lifetime))*totalcapex
+        yearlyreturncost = (
+            hurdlerate / (1 - (1 + hurdlerate) ** -lifetime)
+        ) * totalcapex
         fixed_cost = yearlyreturncost + yearlyopex
         return fixed_cost
-
-
 
 
 class NuclearModel(GenerationModel):
@@ -263,7 +265,7 @@ class NuclearModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        capex=2000000,
+        capex=6000000,
         opex=50000,
         variable_cost=2,
         data_path="",
@@ -274,7 +276,7 @@ class NuclearModel(GenerationModel):
         capacities=[1000],
         limits=[0, 1000000],
         lifetime=40,
-        hurdlerate=0.052
+        hurdlerate=0.052,
     ):
         """
         == description ==
@@ -320,7 +322,7 @@ class NuclearModel(GenerationModel):
             month_online=month_online,
             limits=limits,
             lifetime=lifetime,
-            hurdlerate=hurdlerate
+            hurdlerate=hurdlerate,
         )
         self.power_out = np.array(self.power_out)
         self.total_installed_capacity = sum(capacities)
@@ -354,7 +356,7 @@ class GeothermalModel(GenerationModel):
         year_max=2019,
         months=list(range(1, 13)),
         capex=2000000,
-        opex=2000000*0.05,
+        opex=2000000 * 0.05,
         variable_cost=0,
         data_path="",
         save_path="stored_model_runs/",
@@ -629,7 +631,7 @@ class OffshoreWindModel(GenerationModel):
         year_max=2019,
         months=list(range(1, 13)),
         capex=1189000,
-        opex=29.2*1000,
+        opex=29.2 * 1000,
         variable_cost=1,
         tilt=5,
         air_density=1.23,
@@ -652,7 +654,7 @@ class OffshoreWindModel(GenerationModel):
         limits=[0, 1000000],
         power_curve=None,
         lifetime=25,
-        hurdlerate=0.052
+        hurdlerate=0.052,
     ):
         """
         == description ==
@@ -684,7 +686,7 @@ class OffshoreWindModel(GenerationModel):
         year_online: list(int) year the generation unit was installed, at each site
         month_online: list(int) month the generation unit was installed, at each site
         force_run: (bool) determines whether to rerun the model
-        limits: (Array<float>) used to define the max and min installed generation in MWh ([min,max])
+        limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
         power_curve: (Array<float>) power curve for the turbine
         == returns ==
         None
@@ -950,7 +952,7 @@ class SolarModel(GenerationModel):
         limits=[0, 1000000],
         force_run=False,
         hurdlerate=0.05,
-        lifetime=35
+        lifetime=35,
     ):
         """
         == description ==
@@ -1353,8 +1355,7 @@ class OnshoreWindModel(GenerationModel):
         force_run=False,
         limits=[0, 1000000],
         lifetime=25,
-        hurdlerate=0.052
-    
+        hurdlerate=0.052,
     ):  # this added by CQ so that a power curve can optionally be imported
         """
         == description ==
