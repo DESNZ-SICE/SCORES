@@ -53,10 +53,6 @@ class GenerationModel:
         self.year_min = year_min
         self.year_max = year_max
         self.months = months
-        if self.months == list(range(1, 13)):
-            self.monthsubsample = False
-        else:
-            self.monthsubsample = True
         self.fixed_cost = fixed_cost
         self.variable_cost = variable_cost
         self.name = name
@@ -75,6 +71,11 @@ class GenerationModel:
         else:
             self.month_online = month_online
 
+        if months != (list(range(1, 13))) and year_max > year_min:
+            raise (
+                "The model can only be run for continous period: months cannot be subsampled over multiple years.\nTo return generation profiles for non contingous months, either run the model for each month separately or run it for the entire years and subsequently subsample the results."
+            )
+
         self.firstdatadatetime = False  # this is used to check if the start date of the weather data has been found
         self.loadindex = 0  # this shows us which row of the weather data corresponds to the start date of the simulation. For now it is set to 0, but this may be changed later
 
@@ -91,18 +92,18 @@ class GenerationModel:
                 n += 1
             d += datetime.timedelta(1)
 
-
         self.operationaldatetime = [
             datetime.datetime(self.year_online[i], self.month_online[i], 1)
             for i in range(len(self.year_online))
         ]
-        # our power_out arrays will be created here. If we're subsampling for particular months,
-        # these arrays will be too long: we'll filter them after running the model
+        #this creates datetime objects to represent the date at which each generator site went online for the first time. 
+
+        # we need to find how many hours the simulations takes place over. This is the number of hours between the start date and the end date
         if max(self.months) == 12:
             enddatetime = datetime.datetime(self.year_max + 1, 1, 1)
         else:
             enddatetime = datetime.datetime(self.year_max, max(self.months) + 1, 1)
-        numberofpoints = int((enddatetime - self.startdatetime).total_seconds() // 3600)
+        numberofpoints = int((enddatetime - self.startdatetime).total_seconds() // 3600) #each hour gets a datapoint
         self.power_out = [0.0] * numberofpoints
         self.power_out_scaled = [0.0] * len(self.power_out)
 
@@ -211,7 +212,7 @@ class GenerationModel:
         == returns ==
         (float) load factor in percent (0-100)
         """
-        # rewritten this, needs further examination
+        # maximum possible output is computed in run_model, based on the year and month the generator came online
 
         return 100 * sum(self.power_out) / (self.max_possible_output)
 
@@ -319,9 +320,6 @@ class NuclearModel(GenerationModel):
             timedeltahours = timedelta.days * 24 + timedelta.seconds / 3600
             timedeltahours = int(timedeltahours)
             self.power_out[timedeltahours:] += self.plant_capacities[sitenum]
-
-        if self.monthsubsample:
-            self.power_out = self.power_out[self.monthindexlist]
         self.scale_output(self.total_installed_capacity)
 
 
@@ -348,7 +346,7 @@ class GeothermalModel(GenerationModel):
         == parameters ==
         sites: (Array<int>) List of site indexes to be used. The site indexes here mean little, but
         are used for consistency. The length of the site index must match the length of the capacities
-        year_min: (int) earliest year in sumlation
+        year_min: (int) earliest year in simlation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
         fixed_cost: (float) cost incurred per MW of installation in GBP
@@ -403,8 +401,7 @@ class GeothermalModel(GenerationModel):
             timedeltahours = timedelta.days * 24 + timedelta.seconds / 3600
             timedeltahours = int(timedeltahours)
             self.power_out[timedeltahours:] += self.plant_capacities[sitenum]
-        if self.monthsubsample:
-            self.power_out = self.power_out[self.monthindexlist]
+
         self.scale_output(self.total_installed_capacity)
 
 
@@ -894,8 +891,7 @@ class OffshoreWindModel(GenerationModel):
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
         # currently installed capacity: the values should not
-        if self.monthsubsample:
-            self.power_out = self.power_out[self.monthindexlist]
+
         self.power_out = self.power_out_array.tolist()
         self.scale_output(self.total_installed_capacity)
 
@@ -1284,8 +1280,7 @@ class SolarModel(GenerationModel):
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
         # currently installed capacity: the values should not change
-        if self.monthsubsample:
-            self.power_out = self.power_out[self.monthindexlist]
+
         self.scale_output(self.total_installed_capacity)
 
 
