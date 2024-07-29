@@ -607,7 +607,7 @@ class TidalStreamTurbineModel(GenerationModel):
                     # prevent overload
                     if speed > v[-1]:
                         speed = v[-1]
-
+                    self.max_possible_output += self.turbine_size * self.n_turbine[si]
                     # interpolate the closest values from the power curve
                     p1 = int(speed / 0.1)
                     p2 = p1 + 1
