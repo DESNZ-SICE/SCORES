@@ -6,3 +6,4 @@ scripts/*.py
 local*
 plottingoutputs/
 credentials.py
+.DS_Store
