@@ -60,7 +60,6 @@ class GenerationModel:
         self.year_max = year_max
         self.months = months
         self.fixed_cost = self.calculate_fixed_costs(lifetime, capex, opex, hurdlerate)
-        print("Yearly fixed cost: ", self.fixed_cost)
         self.variable_cost = variable_cost
         self.name = name
         self.data_path = data_path
@@ -249,8 +248,18 @@ class GenerationModel:
         return p
 
     def calculate_fixed_costs(self, lifetime, totalcapex, yearlyopex, hurdlerate):
-        """works out the yearly cost, given the lifetime, total capex, yearly opex, and hurdle rate"""
+        """
+        == description ==
+        This function calculates the yearly fixed costs of the generation input
 
+        == parameters ==
+        lifetime: (int) lifetime of the generation unit in years
+        totalcapex: (float) total capital expenditure in GBP
+        yearlyopex: (float) yearly operational expenditure in GBP
+        hurdlerate: (float) hurdle rate for the generation unit
+        == returns ==
+        (float) cost per year in GBP
+        """
         yearlyreturncost = (
             hurdlerate / (1 - (1 + hurdlerate) ** -lifetime)
         ) * totalcapex
@@ -297,8 +306,12 @@ class NuclearModel(GenerationModel):
         variable_cost: (float) cost incurred per MWh of generation in GBP
         data_path: (str) path to file containing raw data
         save_path: (str) path to file where output will be saved
-        save: (boo) determines whether to save the results of the run
+        save: (bool) determines whether to save the results of the run
         capacity: (Array <float>) installed capacity of each site in MW
+        limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
+        lifetime: (int) lifetime of the generation unit in years
+        hurdlerate: (float) hurdle rate for the generation unit, between 0 and 1
+        loadfactor: (float) load factor of the generation unit
         == returns ==
         None
         """
@@ -369,6 +382,9 @@ class GeothermalModel(GenerationModel):
         month_online=None,
         capacities=[1000],
         limits=[0, 1000000],
+        lifetime=40,
+        hurdlerate=0.1,
+        loadfactor=0.90,
     ):
         """
         == description ==
@@ -385,6 +401,10 @@ class GeothermalModel(GenerationModel):
         save_path: (str) path to file where output will be saved
         save: (boo) determines whether to save the results of the run
         capacity: (Array <float>) installed capacity of each site in MW
+        limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
+        lifetime: (int) lifetime of the generation unit in years
+        hurdlerate: (float) hurdle rate for the generation unit (between 0 and 1)
+        loadfactor: (float) load factor of the generation unit, between 0 and 1
         == returns ==
         None
         """
@@ -408,10 +428,13 @@ class GeothermalModel(GenerationModel):
             year_online=year_online,
             month_online=month_online,
             limits=limits,
+            lifetime=lifetime,
+            hurdlerate=hurdlerate,
         )
         self.power_out = np.array(self.power_out)
         self.total_installed_capacity = sum(capacities)
         self.plant_capacities = capacities
+        self.loadfactor = loadfactor
         self.run_model()
 
     def __str__(self):
@@ -431,7 +454,9 @@ class GeothermalModel(GenerationModel):
             timedelta = self.startdatetime - operationaltime
             timedeltahours = timedelta.days * 24 + timedelta.seconds / 3600
             timedeltahours = int(timedeltahours)
-            self.power_out[timedeltahours:] += self.plant_capacities[sitenum]
+            self.power_out[timedeltahours:] += (
+                self.plant_capacities[sitenum] * self.loadfactor
+            )
 
         self.scale_output(self.total_installed_capacity)
 
