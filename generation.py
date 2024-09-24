@@ -1075,23 +1075,23 @@ class SolarModel(GenerationModel):
                 print("No plant capacities given")
                 self.plant_capacities = [1] * len(sites)
 
-        elif self.sites[:2] == "lf":
-            sites = []
-            lwst = str(sites[2:])
-            locs = []
-            with open(self.save_path + "s_load_factors.csv", "r") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    if float(row[2]) * 100 > lwst:
-                        locs.append([row[0] + row[1]])
-            with open(self.data_path + "site_locs.csv", "r") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    if row[1] + row[2] in locs:
-                        sites.apend(int(row[0]))
-            self.sites = sites
+        # elif self.sites[:2] == "lf":
+        #     sites = []
+        #     lwst = str(sites[2:])
+        #     locs = []
+        #     with open(self.save_path + "s_load_factors.csv", "r") as csvfile:
+        #         reader = csv.reader(csvfile)
+        #         next(reader)
+        #         for row in reader:
+        #             if float(row[2]) * 100 > lwst:
+        #                 locs.append([row[0] + row[1]])
+        #     with open(self.data_path + "site_locs.csv", "r") as csvfile:
+        #         reader = csv.reader(csvfile)
+        #         next(reader)
+        #         for row in reader:
+        #             if row[1] + row[2] in locs:
+        #                 sites.apend(int(row[0]))
+        #     self.sites = sites
 
         self.total_installed_capacity = sum(self.plant_capacities)
 

@@ -722,6 +722,7 @@ class MultipleStorageAssets:
             self.units[i].charge = self.units[i].capacity * self.units[i].initial_charge
             self.units[i].n_years = len(surplus) / (365.25 * 24 / t_res)
             self.units[i].output = [0] * len(surplus)
+            self.units[i].missed_demand = [0] * len(surplus)
             self.units[i].energy_shortfalls = 0
             self.units[i].efficiencylosses = 0
             self.units[i].chargetimeseries = []
