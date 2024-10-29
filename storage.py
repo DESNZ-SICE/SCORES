@@ -32,7 +32,7 @@ class StorageModel:
         name,
         capacity=1,
         limits=[0, 1000000000],
-        intial_charge=1.0,
+        initial_charge=1.0,
     ):
         """
         == description ==
@@ -68,7 +68,7 @@ class StorageModel:
         self.capacity = capacity
         self.name = name
         self.limits = limits
-        self.initial_charge = intial_charge
+        self.initial_charge = initial_charge
         self.R = 0
         self.dischargelosses = 0
         # These will be used to monitor storage usage
@@ -342,14 +342,14 @@ class StorageModel:
         self.energy_shortfalls = 0
         self.efficiencylosses = 0
         shortfalls = 0  # timesteps where demand could not be met
-        soc = []
+        self.SOC = []
         # for convenience, these are the ramp rates in MWh
         self.max_c = self.capacity * self.max_c_rate * t_res / 100
         self.max_d = self.capacity * self.max_d_rate * t_res / 100
 
         for t in range(len(surplus)):
             self.time_step(t, surplus[t])
-            soc.append(self.charge / self.capacity)
+            self.SOC.append(self.charge / self.capacity)
 
             if self.output[t] < 0:
                 if t > start_up_time:
@@ -361,7 +361,7 @@ class StorageModel:
         if return_output is False and return_soc is False:
             return reliability
         elif return_soc is True:
-            return [reliability, soc]
+            return [reliability, self.SOC]
         else:
             return [reliability, output]
 
@@ -489,6 +489,7 @@ class HydrogenStorageModel(StorageModel):
         max_c_rate=0.06,
         max_d_rate=0.12,
         capacity=1,
+        initial_charge=1,
     ):
         super().__init__(
             eff_in,
@@ -500,6 +501,7 @@ class HydrogenStorageModel(StorageModel):
             max_d_rate,
             "Hydrogen",
             capacity=capacity,
+            initial_charge=initial_charge,
         )
 
 
@@ -573,7 +575,6 @@ class MultipleStorageAssets:
             self.rel_capacity[i] = copy.deepcopy(assets[i].capacity)
 
         total_capacity = sum(self.rel_capacity)
-        print(f"Debug :{total_capacity}")
         self.capacity = total_capacity
         for i in range(self.n_assets):
             self.rel_capacity[i] = float(self.rel_capacity[i]) / total_capacity
@@ -726,7 +727,7 @@ class MultipleStorageAssets:
             self.units[i].energy_shortfalls = 0
             self.units[i].efficiencylosses = 0
             self.units[i].chargetimeseries = []
-
+            self.units[i].SOC = []
         for t in range(len(surplus)):
             # self discharge all assets
             self.self_discharge_timestep()
@@ -735,6 +736,7 @@ class MultipleStorageAssets:
 
             if t_surplus > 0:
                 for i in range(self.n_assets):
+                    self.units[i].SOC.append(self.units[i].charge)
                     if t_surplus > 0:
                         self.units[c_order[i]].charge_timestep(t, t_surplus)
                         output[t] = self.units[c_order[i]].output[t]
@@ -745,6 +747,8 @@ class MultipleStorageAssets:
 
             elif t_surplus < 0:
                 for i in range(self.n_assets):
+                    self.units[i].SOC.append(self.units[i].charge)
+
                     if t_surplus < 0:
                         self.units[d_order[i]].discharge_timestep(t, t_surplus)
                         output[t] = self.units[d_order[i]].output[t]
