@@ -267,6 +267,73 @@ class GenerationModel:
         return fixed_cost
 
 
+class DispatchableGenerator(GenerationModel):
+    def __init__(
+        self,
+        sites=[0],
+        year_min=2013,
+        year_max=2019,
+        months=list(range(1, 13)),
+        capex=4000000,
+        opex=50000,
+        gentype="Gas",
+        fuel_cost=10,
+        carbon_cost=5,
+        variable_opex=2,
+        year_online=None,
+        month_online=None,
+        capacities=[1000],
+        limits=[0, 1000000],
+        lifetime=40,
+        hurdlerate=0.1,
+    ):
+        """
+        == description ==
+        Initialises a DispatchableGenerator object.
+        == parameters ==
+        sites: (Array<int>) List of site indexes to be used
+        year_min: (int) earliest year in simulation
+        year_max: (int) latest year in simulation
+        months: (Array<int>) list of months to be included in the simulation
+        capex: (float) cost incurred per MW of installation in GBP
+        opex: (float) yearly cost per MW of installation in GBP
+        gentype: (str) type of generation unit: this is used to name the generator
+        fuel_cost: (float) cost incurred per MWh of generation in GBP
+        carbon_cost: (float) cost incurred per MWh of generation in GBP
+        variable_opex: (float) cost incurred per MWh of generation in GBP
+        year_online: list(int) year the generation unit was installed, at each site
+        month_online: list(int) month the generation unit was installed, at each site
+        capacities: (Array <float>) installed capacity of each site in MW
+        limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
+        lifetime: (int) lifetime of the generation unit in years
+        hurdlerate: (float) hurdle rate for the generation unit
+        == returns ==
+        None
+        """
+
+        self.variable_cost = fuel_cost + carbon_cost + variable_opex
+        super().__init__(
+            sites,
+            year_min,
+            year_max,
+            months,
+            capex,
+            opex,
+            self.variable_cost,
+            f"Dispatchable_{gentype}",
+            "",
+            "",
+            year_online=year_online,
+            month_online=month_online,
+            limits=limits,
+            lifetime=lifetime,
+            hurdlerate=hurdlerate,
+        )
+        self.total_installed_capacity = sum(capacities)
+
+        self.plant_type = gentype
+
+
 class NuclearModel(GenerationModel):
     def __init__(
         self,
