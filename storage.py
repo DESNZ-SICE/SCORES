@@ -77,7 +77,7 @@ class StorageModel:
         self.curt = 0  # total supply that could not be stored
         # from optimise setting only (added by Mac)
         self.discharge = np.empty([])  # timeseries of discharge rate (grid side) MW
-        self.charge = np.empty([])  # timeseries of charge rate (grid side) M
+        self.charge = 0  # store state of charge in MWh
         self.SOC = []  # timeseries of Storage State of Charge (SOC) MWh
         self.chargetimeseries = []
 
@@ -531,7 +531,14 @@ class ThermalStorageModel(StorageModel):
 
 
 class MultipleStorageAssets:
-    def __init__(self, assets, c_order=None, d_order=None):
+    def __init__(
+        self,
+        assets,
+        c_order=None,
+        d_order=None,
+        DispatchableAsset=None,
+        DispatchTimeHorizon=24,
+    ):
         """
         == description ==
         Initialisation of a multiple storage object. Note that if charging or
@@ -560,7 +567,12 @@ class MultipleStorageAssets:
             []
         )  # the necessary fossil fuel generation timeseries from the last optimise run
         self.Shed = np.empty([])  # timeseries of surplus shedding
-
+        self.DispatchableAsset = DispatchableAsset
+        self.DispatchTimeHorizon = DispatchTimeHorizon
+        if DispatchableAsset is not None:
+            self.DispatchEnabled = True
+        else:
+            self.DispatchEnabled = False
         if c_order is None:
             c_order = list(range(self.n_assets))
 
@@ -746,6 +758,20 @@ class MultipleStorageAssets:
                 self.curt += output[t]
 
             elif t_surplus < 0:
+                if self.DispatchEnabled:
+                    # we want to see if the energy demand over the time horizon exceeds the energy available from the storage
+                    # if it does we will need to dispatch the dispatchable asset
+                    storelevel = 0
+                    for i in range(self.n_assets):
+                        storelevel += self.units[i].charge
+                    if t > len(surplus) - self.timehorizon:
+                        endoftimehorizon = len(surplus) - 1
+                    else:
+                        endoftimehorizon = t + self.timehorizon
+                    timehorizondemand = np.sum(surplus[t:endoftimehorizon])
+                    if storelevel + timehorizondemand < 0:
+                        t_surplus = self.DispatchableAsset.dispatch(t, t_surplus)
+                        output[t] = t_surplus
                 for i in range(self.n_assets):
                     self.units[i].SOC.append(self.units[i].charge)
 
@@ -755,6 +781,7 @@ class MultipleStorageAssets:
                         if t > start_up_time:
                             di_profiles[i]["d"][t % T] += output[t] - t_surplus
                         t_surplus = self.units[d_order[i]].output[t]
+
                 if output[t] < 0:
                     if t > start_up_time:
                         shortfalls += 1

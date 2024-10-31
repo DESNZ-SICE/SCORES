@@ -333,6 +333,29 @@ class DispatchableGenerator(GenerationModel):
 
         self.plant_type = gentype
 
+    def __str__(self):
+        return f"{self.plant_type} Generator, total capacity: {self.total_installed_capacity} MW"
+    
+    def dispatch(self, t, demand):
+        """
+        == description ==
+        This function dispatches the generator in an attempt to meet surplus demand
+
+        == parameters ==
+        t: (int) time index
+        demand: (float) demand at time t. This will be a negative value
+
+        == returns ==
+        (float) unmet demand
+        """
+        if demand +self.total_installed_capacity<0:
+            self.power_out[t] = self.total_installed_capacity
+            self.power_out_array[t] = self.total_installed_capacity
+            return demand + self.total_installed_capacity
+        else:
+            self.power_out[t] = abs(demand)
+            self.power_out_array[t] = abs(demand)
+            return 0
 
 class NuclearModel(GenerationModel):
     def __init__(
