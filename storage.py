@@ -761,17 +761,91 @@ class MultipleStorageAssets:
                 if self.DispatchEnabled:
                     # we want to see if the energy demand over the time horizon exceeds the energy available from the storage
                     # if it does we will need to dispatch the dispatchable asset
-                    storelevel = 0
-                    for i in range(self.n_assets):
-                        storelevel += self.units[i].charge
-                    if t > len(surplus) - self.timehorizon:
-                        endoftimehorizon = len(surplus) - 1
+
+                    if t > len(surplus) - self.DispatchTimeHorizon:
+                        lengthoftimehorizon = len(surplus) - t
                     else:
-                        endoftimehorizon = t + self.timehorizon
-                    timehorizondemand = np.sum(surplus[t:endoftimehorizon])
-                    if storelevel + timehorizondemand < 0:
-                        t_surplus = self.DispatchableAsset.dispatch(t, t_surplus)
-                        output[t] = t_surplus
+                        lengthoftimehorizon = self.DispatchTimeHorizon
+                    # we now need to predict the storage levels for the timehorizon. We'll simulate the storage levels for the time horizon,
+                    # and if the storage levels are zero at any point, we will dispatch the dispatchable asset
+                    storelevels = [self.units[i].charge for i in range(self.n_assets)]
+                    maxcapacity = [self.units[i].capacity for i in range(self.n_assets)]
+                    # if t > 4807 and t < 4820:
+                    #     print("_____________________")
+                    #     print(t)
+                    #     print(storelevels)
+                    #     print(maxcapacity)
+                    for hourinfutureprediction in range(lengthoftimehorizon):
+                        this_surplus = surplus[t + hourinfutureprediction]
+
+                        # if t > 4807 and t < 4820:
+                        #     print(f"Hour: {hourinfutureprediction}")
+                        #     print(f"This surplus: {this_surplus}")
+                        if this_surplus >= 0:
+                            # if t > 4807 and t < 4820:
+                            #     print("Charging")
+                            for i in range(self.n_assets):
+                                if this_surplus > 0:
+                                    #charge the stores in the order of the c_order
+                                    storelevels[c_order[i]] += (
+                                        this_surplus
+                                        * self.units[c_order[i]].eff_in
+                                        / 100
+                                    )
+                                    
+                                    if (
+                                        storelevels[c_order[i]]
+                                        > maxcapacity[c_order[i]]
+                                    ):
+                                        #if the store is full, then only part of the surplus can be stored
+                                        this_surplus -= (
+                                            (
+                                                storelevels[c_order[i]]
+                                                - maxcapacity[c_order[i]]
+                                            )
+                                            * self.units[c_order[i]].eff_in
+                                            / 100
+                                        )
+                                        storelevels[c_order[i]] = maxcapacity[
+                                            c_order[i]
+                                        ]
+                                    else:
+                                        #if the store is not full, then the surplus is all stored
+                                        this_surplus =0
+                        elif this_surplus < 0:
+                            # if t > 4807 and t < 4820:
+                            #     print("Discharging")
+                            for i in range(self.n_assets):
+                                if this_surplus < 0:
+                                    storelevels[d_order[i]] += (
+                                        this_surplus
+                                        * 100
+                                        / self.units[d_order[i]].eff_out
+                                    )
+                                    if storelevels[d_order[i]] < 0:
+                                        #in this case, the store has been discharged more than it can be, so we'll set it to zero. We'll then reduce the surplus
+                                        #by the amount that was discharged
+                                        this_surplus += (
+                                            storelevels[d_order[i]]
+                                            * 100
+                                            / self.units[d_order[i]].eff_out
+                                        )
+                                        storelevels[d_order[i]] = 0
+                                    else:
+                                        this_surplus =0
+
+                        # if t > 4807 and t < 4820:
+                        #     print(f"Store levels: {storelevels}")
+                        summedstorelevels = sum(storelevels)
+                        # if t > 4807 and t < 4820:
+                        #     print(f"Summed store levels: {summedstorelevels}")
+                        # if there is any hour in the time horizon where the storage levels are zero, we want to dispatch the dispatchable asset.
+                        # we are not dispatching our future predictions, we are dispatching the current hour
+                        if summedstorelevels <= 0:
+                            t_surplus = self.DispatchableAsset.dispatch(t, t_surplus)
+                            output[t] = t_surplus
+                            break
+
                 for i in range(self.n_assets):
                     self.units[i].SOC.append(self.units[i].charge)
 
