@@ -40,6 +40,8 @@ class ElectricitySystem:
         start_up_time=0,
         strategy="ordered",
         aggEV_list=aggEV.MultipleAggregatedEVs([]),
+        DispatchableAsset=None,
+        DispatchTimeHorizon=24,
     ):
         """
         == description ==
@@ -81,7 +83,7 @@ class ElectricitySystem:
         # initialise bounds that are used for optimisation
         self.min_gen_cap = [0.0] * len(gen_list)
         self.max_gen_cap = [np.inf] * len(gen_list)
-        self.storage = MultipleStorageAssets(stor_list)
+        self.storage = MultipleStorageAssets(stor_list, DispatchableAsset=DispatchableAsset, DispatchTimeHorizon=DispatchTimeHorizon)
 
         for gen in self.gen_list:
             # if max(gen.power_out_scaled) == 0:
