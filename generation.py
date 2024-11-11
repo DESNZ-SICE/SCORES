@@ -335,7 +335,7 @@ class DispatchableGenerator(GenerationModel):
 
     def __str__(self):
         return f"{self.plant_type} Generator, total capacity: {self.total_installed_capacity} MW"
-    
+
     def dispatch(self, t, demand):
         """
         == description ==
@@ -348,7 +348,7 @@ class DispatchableGenerator(GenerationModel):
         == returns ==
         (float) unmet demand
         """
-        if demand +self.total_installed_capacity<0:
+        if demand + self.total_installed_capacity < 0:
             self.power_out[t] = self.total_installed_capacity
             self.power_out_array[t] = self.total_installed_capacity
             return demand + self.total_installed_capacity
@@ -356,6 +356,7 @@ class DispatchableGenerator(GenerationModel):
             self.power_out[t] = abs(demand)
             self.power_out_array[t] = abs(demand)
             return 0
+
 
 class NuclearModel(GenerationModel):
     def __init__(
@@ -826,6 +827,8 @@ class OffshoreWindModel(GenerationModel):
             year_online=year_online,
             month_online=month_online,
             limits=limits,
+            hurdlerate=hurdlerate,
+            lifetime=lifetime,
         )
 
         self.tilt = tilt
@@ -1451,7 +1454,7 @@ class OnshoreWindModel(GenerationModel):
         year_max=2019,
         months=list(range(1, 13)),
         capex=1230000,
-        opex=30700,
+        opex=29.2 * 1000,
         variable_cost=6,
         tilt=5,
         air_density=1.23,
