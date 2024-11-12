@@ -2033,7 +2033,7 @@ class OnshoreWindModel3000(OnshoreWindModel):
         )
 
 
-class OnshoreWindModel3600(OnshoreWindModel):
+class OnshoreWindModel3500(OnshoreWindModel):
     def __init__(
         self,
         sites=["all"],
@@ -2063,7 +2063,7 @@ class OnshoreWindModel3600(OnshoreWindModel):
             v_cut_in=4,
             v_cut_out=25,
             n_turbine=n_turbine,
-            turbine_size=3.6,
+            turbine_size=3.5,
             hub_height=80,
             data_path=data_path,
             save_path=save_path,
@@ -3374,6 +3374,7 @@ class generatordictionaries:
             # 2.3: OnshoreWindModel2300,
             2.5: OnshoreWindModel2500,
             3: OnshoreWindModel3000,
+            3.5: OnshoreWindModel3500,
             4: OnshoreWindModel4000,
             5: OnshoreWindModel5000,
             6: OnshoreWindModel6000,
