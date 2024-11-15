@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 from fns import lambda_i, c_p, get_filename
-
+import scipy.stats as s
 
 class GenerationModel:
     # Base class for a generation model
@@ -1385,6 +1385,9 @@ class OnshoreWindModel(GenerationModel):
         limits=[0, 1000000],
         lifetime=25,
         hurdlerate=0.052,
+        scaling_factors=None,
+        cell_weibull=None,
+        pixel_weibull=None
     ):  # this added by CQ so that a power curve can optionally be imported
         """
         == description ==
@@ -1416,6 +1419,10 @@ class OnshoreWindModel(GenerationModel):
         data_height: (float) height at which wind speed data applies   # added by CQ
         alpha: (float) wind shear coefficient                          # added by CQ
         power_curve: (Array<float>) optional power curve - power outputs that correspond to v array spaced at 0.1m/s
+        year_online: (int) year the plant was installed
+        month_online: (int) month the plant was installed
+        force_run: (bool) determines whether to force the model to run
+        scaling_factors: (Array<float>) scaling factors for each site: if none given, assume 1 for each site
         == returns ==
         None
         """
@@ -1451,6 +1458,17 @@ class OnshoreWindModel(GenerationModel):
         self.data_height = data_height  # added by CQ
         self.alpha = alpha  # added by CQ
         self.power_curve = power_curve
+        self.cell_weibull = cell_weibull
+        self.pixel_weibull = pixel_weibull
+        if scaling_factors is None:
+            self.scaling_factors = [1] * len(sites)
+        else:
+            self.scaling_factors = scaling_factors
+
+        if len(self.scaling_factors) != len(self.sites):
+            raise Exception(
+                "Scaling factors must be given for each site, or none at all"
+            )
 
         file_name = get_filename(
             sites, "w" + str(turbine_size), year_min, year_max, months
@@ -1606,6 +1624,11 @@ class OnshoreWindModel(GenerationModel):
 
             site_speeds = site_speeds.astype(float)
             site_speeds[site_speeds < 0] = 0
+
+            if self.cell_weibull is not None:
+                for i in range(len(site_speeds)):
+                    site_speed_percentile=s.weibull_min.cdf(site_speeds[i],self.cell_weibull[0],0,self.cell_weibull[1])
+                    site_speeds[i]=s.weibull_min.ppf(site_speed_percentile,self.pixel_weibull[0],0,self.pixel_weibull[1])
 
             # adjusts the wind speeds to hub height
             site_speeds = site_speeds * np.power(
@@ -1877,6 +1900,9 @@ class OnshoreWindModel2000(OnshoreWindModel):
         month_online=None,
         force_run=False,
         limits=[0, 1000000],
+        scaling_factors=None,
+        cell_weibull=None,
+        pixel_weibull=None
     ):
         super().__init__(
             sites=sites,
@@ -1901,6 +1927,9 @@ class OnshoreWindModel2000(OnshoreWindModel):
             force_run=force_run,
             limits=limits,
             power_curve=power_curve,
+            scaling_factors=scaling_factors,
+            cell_weibull=cell_weibull,
+            pixel_weibull=pixel_weibull
         )
 
 
@@ -1962,6 +1991,9 @@ class OnshoreWindModel2500(OnshoreWindModel):
         month_online=None,
         force_run=False,
         limits=[0, 1000000],
+        scaling_factors=None,
+        cell_weibull=None,
+        pixel_weibull=None
     ):
         super().__init__(
             sites=sites,
@@ -1986,6 +2018,9 @@ class OnshoreWindModel2500(OnshoreWindModel):
             force_run=force_run,
             limits=limits,
             power_curve=power_curve,
+            scaling_factors=scaling_factors,
+            cell_weibull=cell_weibull,
+            pixel_weibull=pixel_weibull
         )
         # based on GE 2.5-100
 
@@ -2006,6 +2041,9 @@ class OnshoreWindModel3000(OnshoreWindModel):
         month_online=None,
         force_run=False,
         limits=[0, 1000000],
+        scaling_factors=None,
+        cell_weibull=None,
+        pixel_weibull=None
     ):
         super().__init__(
             sites=sites,
@@ -2030,10 +2068,13 @@ class OnshoreWindModel3000(OnshoreWindModel):
             force_run=force_run,
             limits=limits,
             power_curve=power_curve,
+            scaling_factors=scaling_factors,
+            cell_weibull=cell_weibull,
+            pixel_weibull=pixel_weibull
         )
 
 
-class OnshoreWindModel3600(OnshoreWindModel):
+class OnshoreWindModel3500(OnshoreWindModel):
     def __init__(
         self,
         sites=["all"],
@@ -2049,6 +2090,9 @@ class OnshoreWindModel3600(OnshoreWindModel):
         month_online=None,
         force_run=False,
         limits=[0, 1000000],
+        scaling_factors=None,
+        cell_weibull=None,
+        pixel_weibull=None
     ):
         super().__init__(
             sites=sites,
@@ -2063,7 +2107,7 @@ class OnshoreWindModel3600(OnshoreWindModel):
             v_cut_in=4,
             v_cut_out=25,
             n_turbine=n_turbine,
-            turbine_size=3.6,
+            turbine_size=3.5,
             hub_height=80,
             data_path=data_path,
             save_path=save_path,
@@ -2073,6 +2117,9 @@ class OnshoreWindModel3600(OnshoreWindModel):
             force_run=force_run,
             limits=limits,
             power_curve=power_curve,
+            scaling_factors=scaling_factors,
+            cell_weibull=cell_weibull,
+            pixel_weibull=pixel_weibull
         )
 
 
@@ -3374,6 +3421,7 @@ class generatordictionaries:
             # 2.3: OnshoreWindModel2300,
             2.5: OnshoreWindModel2500,
             3: OnshoreWindModel3000,
+            3.5: OnshoreWindModel3500,
             4: OnshoreWindModel4000,
             5: OnshoreWindModel5000,
             6: OnshoreWindModel6000,
