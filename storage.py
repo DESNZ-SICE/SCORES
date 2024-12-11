@@ -22,14 +22,25 @@ from opt_con_class import System_LinProg_Model, store_optimisation_results
 class StorageModel:
     def __init__(
         self,
-        eff_in,
-        eff_out,
-        self_dis,
-        variable_cost,
-        fixed_cost,
-        max_c_rate,
-        max_d_rate,
-        name,
+        eff_in=95,
+        eff_out=95,
+        self_dis=2,
+        storageCapex=391 * 10**3,
+        storageFixedOpex=7.1 * 10**3,
+        storagelifetime=15,
+        storageVarOpex=0,
+        chargeCapex=0,
+        chargeFixedOpex=0,
+        chargeVarOpex=0,
+        chargeLifetime=15,
+        dischargeCapex=0,
+        dischargeFixedOpex=0,
+        dischargeVarOpex=0,
+        dischargeLifetime=15,
+        hurdleRate=0.08,
+        max_c_rate=25,
+        max_d_rate=25,
+        name="Li-Ion Battery",
         capacity=1,
         limits=[0, 1000000000],
         initial_charge=1.0,
@@ -42,7 +53,17 @@ class StorageModel:
         eff_in: (float) charging efficiency in % (0-100)
         eff_out: (float) discharge efficiency in % (0-100)
         self_dis: (float) self discharge rate in % per month (0-100)
-        fixed_cost: (float) cost incurred per MWh-year of installation in GBP
+        storageCapex: (float) cost incurred per MWh of the storage medium in GBP
+        storageFixedOpex: (float) yearly operational cost of the storage medium per MWh in GBP
+        storagelifetime: (int) lifetime of the storage medium in years
+        storageVarOpex: (float) cost incurred per MWh of throughput in GBP
+        chargeCapex: (float) cost incurred per MW of charging equipment in GBP
+        chargeFixedOpex: (float) yearly operational cost of charging equipment per MW in GBP
+        chargeLifetime: (int) lifetime of the charging equipment in years
+        chargeVarOpex: (float) cost incurred per MWh of throughput in GBP
+        dischargeCapex: (float) cost incurred per MW of discharging equipment in GBP
+        dischargeFixedOpex: (float) yearly operational cost of discharging equipment per MW in GBP
+        dischargeLifetime: (int) lifetime of the discharging equipment in years
         variable_cost: (float) cost incurred per MWh of throughput in GBP
         max_c_rate: (float) the maximum charging rate (% per hour)
         max_d_rate: (float) the maximum discharging rate (% per hour)
@@ -61,8 +82,26 @@ class StorageModel:
         self.eff_in = eff_in
         self.eff_out = eff_out
         self.self_dis = self_dis
-        self.variable_cost = variable_cost
-        self.fixed_cost = fixed_cost
+
+        storagefixedcost = self.calculate_fixed_costs(
+            storagelifetime, storageCapex, storageFixedOpex, hurdleRate
+        )
+
+        chargefixedcost = self.calculate_fixed_costs(
+            chargeLifetime, chargeCapex, chargeFixedOpex, hurdleRate
+        )
+        dischargefixedcost = self.calculate_fixed_costs(
+            dischargeLifetime, dischargeCapex, dischargeFixedOpex, hurdleRate
+        )
+        print(f"Storage fixed cost: {storagefixedcost}")
+        print(f"Charge fixed cost: {chargefixedcost*max_c_rate/100}")
+        print(f"Discharge fixed cost: {dischargefixedcost*max_d_rate/100}")
+        self.variable_cost = sum([storageVarOpex, chargeVarOpex, dischargeVarOpex])
+        self.fixed_cost = (
+            storagefixedcost
+            + (max_c_rate / 100) * chargefixedcost
+            + (max_d_rate / 100) * dischargefixedcost
+        )
         self.max_c_rate = max_c_rate
         self.max_d_rate = max_d_rate
         self.capacity = capacity
@@ -133,6 +172,25 @@ class StorageModel:
                 self.capacity * self.fixed_cost
                 + self.en_out * self.variable_cost * 100 / (self.eff_out * self.n_years)
             )
+
+    def calculate_fixed_costs(self, lifetime, totalcapex, yearlyopex, hurdlerate):
+        """
+        == description ==
+        This function calculates the yearly fixed costs of the generation input
+
+        == parameters ==
+        lifetime: (int) lifetime of the generation unit in years
+        totalcapex: (float) total capital expenditure in GBP
+        yearlyopex: (float) yearly operational expenditure in GBP
+        hurdlerate: (float) hurdle rate for the generation unit
+        == returns ==
+        (float) cost per year in GBP
+        """
+        yearlyreturncost = (
+            hurdlerate / (1 - (1 + hurdlerate) ** -lifetime)
+        ) * totalcapex
+        fixed_cost = yearlyreturncost + yearlyopex
+        return fixed_cost
 
     def plot_timeseries(self, start=0, end=-1):
         """
@@ -459,22 +517,44 @@ class BatteryStorageModel(StorageModel):
         eff_in=95,
         eff_out=95,
         self_dis=2,
-        variable_cost=0,
-        fixed_cost=44947,
+        storageCapex=391 * 10**3,
+        storageFixedOpex=7 * 10**3,
+        storagelifetime=15,
+        storageVarOpex=0,
+        chargeCapex=0,
+        chargeFixedOpex=0,
+        chargeVarOpex=0,
+        chargeLifetime=15,
+        dischargeCapex=0,
+        dischargeFixedOpex=0,
+        dischargeVarOpex=0,
+        dischargeLifetime=15,
         max_c_rate=25,
         max_d_rate=25,
         capacity=1,
     ):
         super().__init__(
-            eff_in,
-            eff_out,
-            self_dis,
-            variable_cost,
-            fixed_cost,
-            max_c_rate,
-            max_d_rate,
-            "Li-Ion Battery",
+            eff_in=eff_in,
+            eff_out=eff_out,
+            self_dis=self_dis,
+            storageCapex=storageCapex,
+            storageFixedOpex=storageFixedOpex,
+            storagelifetime=storagelifetime,
+            storageVarOpex=storageVarOpex,
+            chargeCapex=chargeCapex,
+            chargeFixedOpex=chargeFixedOpex,
+            chargeVarOpex=chargeVarOpex,
+            chargeLifetime=chargeLifetime,
+            dischargeCapex=dischargeCapex,
+            dischargeFixedOpex=dischargeFixedOpex,
+            dischargeVarOpex=dischargeVarOpex,
+            dischargeLifetime=dischargeLifetime,
+            hurdleRate=0.08,
+            max_c_rate=max_c_rate,
+            max_d_rate=max_d_rate,
+            name="Li-Ion Battery",
             capacity=capacity,
+            limits=[0, 1000000000],
         )
 
 
@@ -484,23 +564,46 @@ class HydrogenStorageModel(StorageModel):
         eff_in=78.7,
         eff_out=50,
         self_dis=0,
-        variable_cost=8.44,
-        fixed_cost=193.9,
+        storageCapex=500,
+        storageFixedOpex=9.2,
+        storagelifetime=30,
+        storageVarOpex=2,
+        chargeCapex=730 * 10**3,
+        chargeFixedOpex=30 * 10**3,
+        chargeVarOpex=4,
+        chargeLifetime=30,
+        dischargeCapex=623 * 10**3,
+        dischargeFixedOpex=13 * 10**3,
+        dischargeVarOpex=4.0,
+        dischargeLifetime=25,
         max_c_rate=0.06,
         max_d_rate=0.12,
         capacity=1,
         initial_charge=1,
+        hurdleRate=0.1,
     ):
         super().__init__(
-            eff_in,
-            eff_out,
-            self_dis,
-            variable_cost,
-            fixed_cost,
-            max_c_rate,
-            max_d_rate,
-            "Hydrogen",
+            eff_in=eff_in,
+            eff_out=eff_out,
+            self_dis=self_dis,
+            storageCapex=storageCapex,
+            storageFixedOpex=storageFixedOpex,
+            storagelifetime=storagelifetime,
+            storageVarOpex=storageVarOpex,
+            chargeCapex=chargeCapex,
+            chargeFixedOpex=chargeFixedOpex,
+            chargeVarOpex=chargeVarOpex,
+            chargeLifetime=chargeLifetime,
+            dischargeCapex=dischargeCapex,
+            dischargeFixedOpex=dischargeFixedOpex,
+            dischargeVarOpex=dischargeVarOpex,
+            dischargeLifetime=dischargeLifetime,
+            hurdleRate=hurdleRate,
+            max_c_rate=max_c_rate,
+            max_d_rate=max_d_rate,
+            name="Hydrogen Storage",
             capacity=capacity,
+            limits=[0, 1000000000],
             initial_charge=initial_charge,
         )
 
@@ -786,18 +889,18 @@ class MultipleStorageAssets:
                             #     print("Charging")
                             for i in range(self.n_assets):
                                 if this_surplus > 0:
-                                    #charge the stores in the order of the c_order
+                                    # charge the stores in the order of the c_order
                                     storelevels[c_order[i]] += (
                                         this_surplus
                                         * self.units[c_order[i]].eff_in
                                         / 100
                                     )
-                                    
+
                                     if (
                                         storelevels[c_order[i]]
                                         > maxcapacity[c_order[i]]
                                     ):
-                                        #if the store is full, then only part of the surplus can be stored
+                                        # if the store is full, then only part of the surplus can be stored
                                         this_surplus -= (
                                             (
                                                 storelevels[c_order[i]]
@@ -810,8 +913,8 @@ class MultipleStorageAssets:
                                             c_order[i]
                                         ]
                                     else:
-                                        #if the store is not full, then the surplus is all stored
-                                        this_surplus =0
+                                        # if the store is not full, then the surplus is all stored
+                                        this_surplus = 0
                         elif this_surplus < 0:
                             # if t > 4807 and t < 4820:
                             #     print("Discharging")
@@ -823,8 +926,8 @@ class MultipleStorageAssets:
                                         / self.units[d_order[i]].eff_out
                                     )
                                     if storelevels[d_order[i]] < 0:
-                                        #in this case, the store has been discharged more than it can be, so we'll set it to zero. We'll then reduce the surplus
-                                        #by the amount that was discharged
+                                        # in this case, the store has been discharged more than it can be, so we'll set it to zero. We'll then reduce the surplus
+                                        # by the amount that was discharged
                                         this_surplus += (
                                             storelevels[d_order[i]]
                                             * 100
@@ -832,7 +935,7 @@ class MultipleStorageAssets:
                                         )
                                         storelevels[d_order[i]] = 0
                                     else:
-                                        this_surplus =0
+                                        this_surplus = 0
 
                         # if t > 4807 and t < 4820:
                         #     print(f"Store levels: {storelevels}")
