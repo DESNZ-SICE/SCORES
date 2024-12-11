@@ -746,8 +746,8 @@ class System_LinProg_Model:
         # Storage Costs
         ref_s = {}
         for s in model.StorageIndex:
-            ref_s[s, 0] = self.Mult_Stor.assets[s].fixed_cost
-            ref_s[s, 1] = self.Mult_Stor.assets[s].variable_cost
+            ref_s[s, 0] = self.Mult_Stor.assets[s].storage_fixed_cost
+            ref_s[s, 1] = self.Mult_Stor.assets[s].storage_variable_cost
         model.StorCosts = pyo.Param(
             model.StorageIndex,
             range(2),
@@ -756,6 +756,29 @@ class System_LinProg_Model:
             initialize=ref_s,
         )
 
+        ref_sc = {}
+        for s in model.StorageIndex:
+            ref_sc[s, 0] = self.Mult_Stor.assets[s].charge_fixed_cost
+            ref_sc[s, 1] = self.Mult_Stor.assets[s].charge_variable_cost
+        model.StorChargeCosts = pyo.Param(
+            model.StorageIndex,
+            range(2),
+            within=pyo.NonNegativeReals,
+            mutable=True,
+            initialize=ref_sc,
+        )
+
+        ref_sd = {}
+        for s in model.StorageIndex:
+            ref_sd[s, 0] = self.Mult_Stor.assets[s].discharge_fixed_cost
+            ref_sd[s, 1] = self.Mult_Stor.assets[s].discharge_variable_cost
+        model.StorDischargeCosts = pyo.Param(
+            model.StorageIndex,
+            range(2),
+            within=pyo.NonNegativeReals,
+            mutable=True,
+            initialize=ref_sd,
+        )
         # Declare constraints #
 
         # General Constraints
@@ -1076,10 +1099,20 @@ class System_LinProg_Model:
             )
             + sum(
                 (timehorizon / (365 * 24))
-                * model.StorCosts[i, 0]
                 * model.BuiltCapacity[i]
+                * (
+                    model.StorCosts[i, 0]
+                    + np.max([model.C[i, t] for t in model.TimeIndex])
+                    / (self.Mult_Stor.assets[i].eff_in / 100.0)
+                    * model.StorChargeCosts[i, 0]
+                    + np.max([model.D[i, t] for t in model.TimeIndex])
+                    * (self.Mult_Stor.assets[i].eff_out / 100.0)
+                    * model.StorDischargeCosts[i, 0]
+                )
                 for i in model.StorageIndex
             )
+            # the new cost ensures that the storage unit costs only include the neccessary amount of charging and discharging
+            # the optimiser is free to increase the charge and discharge rates up to their maximum
             + sum(
                 sum(
                     (model.StorCosts[i, 1] + 0.05) * model.D[i, t]
