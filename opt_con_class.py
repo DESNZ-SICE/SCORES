@@ -144,8 +144,8 @@ def opt_results_to_df(model, gennames, storagenames, dispatchablenames):
             model.DispatchableCapacity[d]
         )
         cum_op += sum(
-            pyo.value(model.DispatchableCapacity[d])*
-            pyo.value(model.DispatchableCosts[d, 1])
+            pyo.value(model.DispatchableCapacity[d])
+            * pyo.value(model.DispatchableCosts[d, 1])
             * pyo.value(model.NormalisedDisp[d, t])
             for t in model.TimeIndex
         )
@@ -1109,7 +1109,7 @@ class System_LinProg_Model:
         end = time.time()
         print("Model Formation Complete after: ", int(end - start), "s")
 
-    def Run_Sizing(self, solver="glpk"):
+    def Run_Sizing(self, solver="glpk", timelimit=False):
         """
         == description ==
         Solve the linear programme specified by Form_Model. Results recorded by updating df_capacity. The operational timeseries
@@ -1128,7 +1128,8 @@ class System_LinProg_Model:
 
         # Create a solver #
         opt = pyo.SolverFactory(solver)
-
+        if timelimit:
+            opt.options["TimeLimit"] = timelimit
         # Solve #
         print("Finding Optimal System ...")
         start = time.time()
