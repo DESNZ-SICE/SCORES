@@ -86,13 +86,24 @@ class StorageModel:
         storagefixedcost = self.calculate_fixed_costs(
             storagelifetime, storageCapex, storageFixedOpex, hurdleRate
         )
+        self.storage_fixed_cost = storagefixedcost
+        self.storage_variable_cost = storageVarOpex
+        # the storage fixed cost refers of storing the energy. For some technologies (such as li-ion batteries),
+        # the storage cannot be separated from the charging and discharging equipment:
+        # in this case, the charge and discharge costs should be set to zero.
+        # however, for technologies such as hydrogen storage, it is benefical to be able to scale
+        # the storage capacity independently of the charging and discharging equipment.
 
         chargefixedcost = self.calculate_fixed_costs(
             chargeLifetime, chargeCapex, chargeFixedOpex, hurdleRate
         )
+        self.charge_fixed_cost = chargefixedcost
+        self.charge_variable_cost = chargeVarOpex
         dischargefixedcost = self.calculate_fixed_costs(
             dischargeLifetime, dischargeCapex, dischargeFixedOpex, hurdleRate
         )
+        self.discharge_fixed_cost = dischargefixedcost
+        self.discharge_variable_cost = dischargeVarOpex
         print(f"Storage fixed cost: {storagefixedcost}")
         print(f"Charge fixed cost: {chargefixedcost*max_c_rate/100}")
         print(f"Discharge fixed cost: {dischargefixedcost*max_d_rate/100}")
