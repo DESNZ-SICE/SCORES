@@ -10,7 +10,7 @@ from pandas import DataFrame
 import matplotlib.pyplot as plt
 
 
-def opt_results_to_df(model, gennames, storagenames, dispatchablenames):
+def opt_results_to_df(model, gennames, storagenames, dispatchablenames, Mult_Stor):
     """
     == description ==
     Takes a solved model and outputs the results of its most recent solve as 2 data frames, one summarising
@@ -52,8 +52,29 @@ def opt_results_to_df(model, gennames, storagenames, dispatchablenames):
             pyo.value(model.BuiltCapacity[i]) / 1000
         )
         # we also want to write the total energy discharged by each storage
-        df1["Stor " + str(storagenames[i]) + " Discharge (TWh)"] = (
-            sum([pyo.value(model.D[i, t]) for t in model.TimeIndex]) / 10**6
+        df1["Stor " + str(storagenames[i]) + " Discharge (TWh)"] = sum(
+            [pyo.value(model.D[i, t]) / 10**6 for t in model.TimeIndex]
+        )
+
+        # write the max charge rate in GW
+        df1["Stor " + str(storagenames[i]) + " Max Charge Rate (GW)"] = (
+            max(
+                [
+                    pyo.value(model.C[i, t]) / (Mult_Stor.assets[i].eff_in / 100)
+                    for t in model.TimeIndex
+                ]
+            )
+            / 1000
+        )
+        # write the max discharge rate in GW
+        df1["Stor " + str(storagenames[i]) + " Max Discharge Rate (GW)"] = (
+            max(
+                [
+                    pyo.value(model.D[i, t]) * (Mult_Stor.assets[i].eff_out / 100)
+                    for t in model.TimeIndex
+                ]
+            )
+            / 1000
         )
 
     for d in model.DispatchableIndex:
@@ -107,26 +128,74 @@ def opt_results_to_df(model, gennames, storagenames, dispatchablenames):
             pyo.value(model.GenCapacity[g])
             * pyo.value(model.GenCosts[g, 1])
             * sum(model.NormalisedGen[g, t] for t in model.TimeIndex)
+            / n_yr
         )
 
         # print('Gen Capital: (£m/yr)',int(pyo.value(model.GenCapacity[g])*pyo.value(model.GenCosts[g,0])/1000000))
         # print('Gen Use: (£m/yr)',int(pyo.value(model.GenCapacity[g])*pyo.value(model.GenCosts[g,1])*sum(model.NormalisedGen[g,t] for t in model.TimeIndex)/(n_yr*1000000)))
 
     for i in model.StorageIndex:
-        df2["Stor " + str(storagenames[i]) + " Capital (£m/yr)"] = (
-            pyo.value(model.StorCosts[i, 0])
-            * pyo.value(model.BuiltCapacity[i])
-            / 1000000
+        storcapitalcosts = pyo.value(model.StorCosts[i, 0]) * pyo.value(
+            model.BuiltCapacity[i]
         )
-        df2["Stor " + str(storagenames[i]) + " Operation (£m/yr)"] = sum(
-            pyo.value(model.StorCosts[i, 1]) * pyo.value(model.D[i, t])
-            for t in model.TimeIndex
-        ) / (n_yr * 1000000)
-        cum_cap += pyo.value(model.StorCosts[i, 0]) * pyo.value(model.BuiltCapacity[i])
-        cum_op += sum(
+        storopcosts = sum(
             pyo.value(model.StorCosts[i, 1]) * pyo.value(model.D[i, t])
             for t in model.TimeIndex
         )
+        df2["Stor " + str(storagenames[i]) + " Storage Capital (£m/yr)"] = (
+            storcapitalcosts / 1000000
+        )
+        df2["Stor " + str(storagenames[i]) + " Storage Operation (£m/yr)"] = (
+            storopcosts / (n_yr * 1000000)
+        )
+        cum_cap += storcapitalcosts
+        cum_op += storopcosts / n_yr
+
+        storchargecapitalcosts = pyo.value(
+            np.max(
+                [
+                    pyo.value(model.C[i, t]) / (Mult_Stor.assets[i].eff_in / 100)
+                    for t in model.TimeIndex
+                ]
+            )
+        ) * pyo.value(model.StorChargeCosts[i, 0])
+        storchargeopcosts = sum(
+            pyo.value(model.StorChargeCosts[i, 1])
+            * pyo.value(model.C[i, t])
+            / (Mult_Stor.assets[i].eff_in / 100)
+            for t in model.TimeIndex
+        )
+        df2["Stor " + str(storagenames[i]) + " Charge Capital (£m/yr)"] = (
+            storchargecapitalcosts / 1000000
+        )
+        df2["Stor " + str(storagenames[i]) + " Charge Operation (£m/yr)"] = (
+            storchargeopcosts / (n_yr * 1000000)
+        )
+        cum_cap += storchargecapitalcosts
+        cum_op += storchargeopcosts / n_yr
+
+        stordischargecapitalcosts = pyo.value(
+            np.max(
+                [
+                    pyo.value(model.D[i, t]) * (Mult_Stor.assets[i].eff_out / 100)
+                    for t in model.TimeIndex
+                ]
+            )
+        ) * pyo.value(model.StorDischargeCosts[i, 0])
+        stordischargeopcosts = sum(
+            pyo.value(model.StorDischargeCosts[i, 1])
+            * pyo.value(model.D[i, t])
+            * (Mult_Stor.assets[i].eff_out / 100)
+            for t in model.TimeIndex
+        )
+        df2["Stor " + str(storagenames[i]) + " Discharge Capital (£m/yr)"] = (
+            stordischargecapitalcosts / 1000000
+        )
+        df2["Stor " + str(storagenames[i]) + " Discharge Operation (£m/yr)"] = (
+            stordischargeopcosts / (n_yr * 1000000)
+        )
+        cum_cap += stordischargecapitalcosts
+        cum_op += stordischargeopcosts / n_yr
 
     for d in model.DispatchableIndex:
         df2["Disp " + str(dispatchablenames[d]) + " Capital (£m/yr)"] = (
@@ -143,11 +212,14 @@ def opt_results_to_df(model, gennames, storagenames, dispatchablenames):
         cum_cap += pyo.value(model.DispatchableCosts[d, 0]) * pyo.value(
             model.DispatchableCapacity[d]
         )
-        cum_op += sum(
-            pyo.value(model.DispatchableCapacity[d])
-            * pyo.value(model.DispatchableCosts[d, 1])
-            * pyo.value(model.NormalisedDisp[d, t])
-            for t in model.TimeIndex
+        cum_op += (
+            sum(
+                pyo.value(model.DispatchableCapacity[d])
+                * pyo.value(model.DispatchableCosts[d, 1])
+                * pyo.value(model.NormalisedDisp[d, t])
+                for t in model.TimeIndex
+            )
+            / n_yr
         )
 
     for k in model.FleetIndex:
@@ -475,11 +547,27 @@ class System_LinProg_Model:
         model.BuiltCapacity = pyo.Var(
             model.StorageIndex, within=pyo.NonNegativeReals
         )  # chosen capacity to build of each storage (MWh)
+        emptychargedict = {}
+        for d in model.StorageIndex:
+            for t in model.TimeIndex:
+                emptychargedict[d, model.TimeIndex[t]] = 0.0
+
         model.C = pyo.Var(
-            model.StorageIndex, model.TimeIndex, within=pyo.NonNegativeReals
+            model.StorageIndex,
+            model.TimeIndex,
+            within=pyo.NonNegativeReals,
+            initialize=emptychargedict,
         )  # charging rate of each storage asset (MW) (from battery side, so energy into battety)
+
+        emptydischargedict = {}
+        for d in model.StorageIndex:
+            for t in model.TimeIndex:
+                emptydischargedict[d, model.TimeIndex[t]] = 0.0
         model.D = pyo.Var(
-            model.StorageIndex, model.TimeIndex, within=pyo.NonNegativeReals
+            model.StorageIndex,
+            model.TimeIndex,
+            within=pyo.NonNegativeReals,
+            initialize=emptydischargedict,
         )  # discharging rate of each storage asset (MW) (from battery side, so energy out of battery, this will be larger than than the energy into the grid)
         model.SOC = pyo.Var(
             model.StorageIndex, model.TimeIndex, within=pyo.NonNegativeReals
@@ -1099,13 +1187,12 @@ class System_LinProg_Model:
             )
             + sum(
                 (timehorizon / (365 * 24))
-                * model.BuiltCapacity[i]
                 * (
-                    model.StorCosts[i, 0]
-                    + np.max([model.C[i, t] for t in model.TimeIndex])
+                    model.StorCosts[i, 0] * model.BuiltCapacity[i]
+                    + np.max([pyo.value(model.C[i, t]) for t in model.TimeIndex])
                     / (self.Mult_Stor.assets[i].eff_in / 100.0)
                     * model.StorChargeCosts[i, 0]
-                    + np.max([model.D[i, t] for t in model.TimeIndex])
+                    + np.max([pyo.value(model.D[i, t]) for t in model.TimeIndex])
                     * (self.Mult_Stor.assets[i].eff_out / 100.0)
                     * model.StorDischargeCosts[i, 0]
                 )
@@ -1116,6 +1203,16 @@ class System_LinProg_Model:
             + sum(
                 sum(
                     (model.StorCosts[i, 1] + 0.05) * model.D[i, t]
+                    + (
+                        model.StorChargeCosts[i, 1]
+                        * model.C[i, t]
+                        / (self.Mult_Stor.assets[i].eff_in / 100.0)
+                    )
+                    + (
+                        model.StorDischargeCosts[i, 1]
+                        * model.D[i, t]
+                        / (self.Mult_Stor.assets[i].eff_out / 100.0)
+                    )
                     for t in model.TimeIndex
                 )
                 for i in model.StorageIndex
@@ -1175,7 +1272,11 @@ class System_LinProg_Model:
         # Update System Characteristics #
 
         x = opt_results_to_df(
-            self.model, self.gennames, self.storagenames, self.dispatchablenames
+            self.model,
+            self.gennames,
+            self.storagenames,
+            self.dispatchablenames,
+            self.Mult_Stor,
         )
         self.df_capacity = x[0]
         self.df_costs = x[1]
