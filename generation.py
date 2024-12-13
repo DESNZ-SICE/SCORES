@@ -285,7 +285,7 @@ class DispatchableGenerator(GenerationModel):
         capacities=[1000],
         limits=[0, 1000000],
         lifetime=40,
-        hurdlerate=0.1,
+        hurdlerate=0.07,
     ):
         """
         == description ==
