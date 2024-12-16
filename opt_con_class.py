@@ -36,6 +36,10 @@ def opt_results_to_df(model, gennames, storagenames, dispatchablenames, Mult_Sto
             ],
         }
     )
+    DispatchableCapacities = [
+        np.max([pyo.value(model.DispatchedPower[d, t]) for t in model.TimeIndex])
+        for d in model.DispatchableIndex
+    ]
 
     # Need to Work out how to get the price as an output (could do with changing the costs to model parameters instead)
     for g in model.GenIndex:
@@ -79,11 +83,13 @@ def opt_results_to_df(model, gennames, storagenames, dispatchablenames, Mult_Sto
 
     for d in model.DispatchableIndex:
         df1["Disp " + str(dispatchablenames[d]) + " Cap (GW)"] = (
-            pyo.value(model.DispatchableCapacity[d]) / 1000
+            DispatchableCapacities[d] / 1000
         )
         # we also want to include the load factor of the dispatchable generators
-        df1["Disp " + str(dispatchablenames[d]) + " Load Factor (%)"] = 100 * np.mean(
-            [pyo.value(model.NormalisedDisp[d, t]) for t in model.TimeIndex]
+        df1["Disp " + str(dispatchablenames[d]) + " Load Factor (%)"] = (
+            100
+            * np.mean([pyo.value(model.DispatchedPower[d, t]) for t in model.TimeIndex])
+            / np.max([pyo.value(model.DispatchedPower[d, t]) for t in model.TimeIndex])
         )
 
     for k in model.FleetIndex:
@@ -200,23 +206,19 @@ def opt_results_to_df(model, gennames, storagenames, dispatchablenames, Mult_Sto
     for d in model.DispatchableIndex:
         df2["Disp " + str(dispatchablenames[d]) + " Capital (£m/yr)"] = (
             pyo.value(model.DispatchableCosts[d, 0])
-            * pyo.value(model.DispatchableCapacity[d])
+            * DispatchableCapacities[d]
             / 1000000
         )
         df2["Disp " + str(dispatchablenames[d]) + " Operation (£m/yr)"] = sum(
-            pyo.value(model.DispatchableCapacity[d])
-            * pyo.value(model.DispatchableCosts[d, 1])
-            * pyo.value(model.NormalisedDisp[d, t])
+            pyo.value(model.DispatchableCosts[d, 1])
+            * pyo.value(model.DispatchedPower[d, t])
             for t in model.TimeIndex
         ) / (n_yr * 1000000)
-        cum_cap += pyo.value(model.DispatchableCosts[d, 0]) * pyo.value(
-            model.DispatchableCapacity[d]
-        )
+        cum_cap += pyo.value(model.DispatchableCosts[d, 0]) * DispatchableCapacities[d]
         cum_op += (
             sum(
-                pyo.value(model.DispatchableCapacity[d])
-                * pyo.value(model.DispatchableCosts[d, 1])
-                * pyo.value(model.NormalisedDisp[d, t])
+                pyo.value(model.DispatchableCosts[d, 1])
+                * pyo.value(model.DispatchedPower[d, t])
                 for t in model.TimeIndex
             )
             / n_yr
@@ -612,10 +614,6 @@ class System_LinProg_Model:
             model.GenIndex, within=pyo.NonNegativeReals
         )  # the built capacity (MW) of each generator type
 
-        model.DispatchableCapacity = pyo.Var(
-            model.DispatchableIndex, within=pyo.NonNegativeReals
-        )
-
         # Declare Parameters #
 
         # Parameters save time on setting up the model for repeated runs, as they can be adjusted without having to rebuild the entire model
@@ -656,7 +654,7 @@ class System_LinProg_Model:
             for d in model.DispatchableIndex:
                 for t in model.TimeIndex:
                     dispref[d, model.TimeIndex[t]] = 0.0
-            model.NormalisedDisp = pyo.Var(
+            model.DispatchedPower = pyo.Var(
                 model.DispatchableIndex,
                 model.TimeIndex,
                 within=pyo.NonNegativeReals,
@@ -892,10 +890,7 @@ class System_LinProg_Model:
                     model.GenCapacity[g] * model.NormalisedGen[g, t]
                     for g in model.GenIndex
                 )
-                + sum(
-                    model.DispatchableCapacity[d] * model.NormalisedDisp[d, t]
-                    for d in model.DispatchableIndex
-                )
+                + sum(model.DispatchedPower[d, t] for d in model.DispatchableIndex)
                 - model.Shed[t]
                 + sum(
                     model.D[i, t] * self.Mult_Stor.assets[i].eff_out / 100.0
@@ -927,20 +922,23 @@ class System_LinProg_Model:
             model.genlimits.add(model.GenCapacity[g] <= model.Gen_Limit_Param_Upper[g])
 
         # Dispatchable Constraints
-        model.displimits = pyo.ConstraintList()
-        for d in model.DispatchableIndex:
-            model.displimits.add(
-                model.DispatchableCapacity[d] >= model.Dispatchable_Limit_Param_Lower[d]
-            )
-            model.displimits.add(
-                model.DispatchableCapacity[d] <= model.Dispatchable_Limit_Param_Upper[d]
-            )
 
         # Dispatch contraints
         model.dispatchable = pyo.ConstraintList()
         for d in model.DispatchableIndex:
             for t in model.TimeIndex:
-                model.dispatchable.add(model.NormalisedDisp[d, t] <= 1)
+                model.dispatchable.add(
+                    model.DispatchedPower[d, t]
+                    <= model.Dispatchable_Limit_Param_Upper[d]
+                )
+
+        model.dipatchablenergy = pyo.ConstraintList()
+        if self.dispatchable_energy_limits:
+            for d in model.DispatchableIndex:
+                model.dipatchablenergy.add(
+                    sum(model.DispatchedPower[d, t] for t in model.TimeIndex)
+                    <= self.totaldemand * self.dispatchable_energy_limits[d]
+                )
 
         # Storage Constraints
         model.maxSOC = pyo.ConstraintList()
@@ -1189,11 +1187,12 @@ class System_LinProg_Model:
             )
             + sum(
                 (timehorizon / (365 * 24))
-                * model.DispatchableCapacity[d]
+                * np.max(
+                    [pyo.value(model.DispatchedPower[d, t]) for t in model.TimeIndex]
+                )
                 * model.DispatchableCosts[d, 0]
-                + model.DispatchableCapacity[d]
-                * model.DispatchableCosts[d, 1]
-                * sum(model.NormalisedDisp[d, t] for t in model.TimeIndex)
+                + model.DispatchableCosts[d, 1]
+                * sum(model.DispatchedPower[d, t] for t in model.TimeIndex)
                 for d in model.DispatchableIndex
             )
             + sum(
