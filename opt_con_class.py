@@ -359,6 +359,7 @@ class System_LinProg_Model:
         gen_list=[],
         YearRange=[],
         dispatchable_list=[],
+        dispatchable_energy_limits=False,
     ):
         """
         == description ==
@@ -372,10 +373,13 @@ class System_LinProg_Model:
         gen_list: (array<generation>): list of the potential renewable generators to build
         YearRange: (array<int>): [MinYear,MaxYear]
         dispatchable_list: (array<generation>): list of the potential dispatchable generators to build
+        dispatchable_energy_limits: (array<float>): list of the energy limits for the dispatchable generators, must be the same length as the dispatchable_list.
+                                                    The limits represent the % of demand which can be met by each dispatchable generator, between 0:1.
         == returns ==
         """
 
         self.surplus = surplus
+        self.totaldemand = abs(sum(surplus))
         self.fossilLimit = fossilLimit
         self.gen_list = gen_list
         self.YearRange = YearRange
@@ -393,6 +397,13 @@ class System_LinProg_Model:
             raise Exception(
                 "Error, the Mult_Stor must be a MultipleStorageAssets object rather than just a list. Even when n_assets=0."
             )
+
+        if dispatchable_energy_limits:
+            if len(dispatchable_energy_limits) != len(dispatchable_list):
+                raise Exception(
+                    "Error, the dispatchable_energy_limits must be the same length as the dispatchable_list."
+                )
+        self.dispatchable_energy_limits = dispatchable_energy_limits
         self.Mult_Stor = Mult_Stor
 
         self.gennames = [i.name for i in gen_list]
