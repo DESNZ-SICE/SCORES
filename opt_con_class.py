@@ -545,7 +545,7 @@ class System_LinProg_Model:
                 self.Mult_aggEV.construct_connectivity_timeseries(start_EV, end_EV)
 
         model.TimeIndex = range(timehorizon)  # NB, index for time of day, starts at 0
-
+        model.timehorizon = timehorizon
         # Declare decision variables #
 
         # General
