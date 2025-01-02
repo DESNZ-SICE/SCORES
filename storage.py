@@ -592,6 +592,7 @@ class HydrogenStorageModel(StorageModel):
         capacity=1,
         initial_charge=1,
         hurdleRate=0.1,
+        limits=[0, 1000000000],
     ):
         super().__init__(
             eff_in=eff_in,
@@ -614,7 +615,7 @@ class HydrogenStorageModel(StorageModel):
             max_d_rate=max_d_rate,
             name="Hydrogen Storage",
             capacity=capacity,
-            limits=[0, 1000000000],
+            limits=limits,
             initial_charge=initial_charge,
         )
 
