@@ -22,7 +22,7 @@ import datetime
 
 
 yearmin = 2014
-yearmax = 2019
+yearmax = 2018
 modelledyear = 2040
 demand = np.loadtxt("demand.csv", usecols=2, delimiter=",", skiprows=1)
 
@@ -66,8 +66,8 @@ generatorlocationfolder = "/Users/matt/code/transform/toptengenerators/"
 
 # we want to use the real locations for the generators
 
-winddatafolder = "/Volumes/macdrive/merraupdated/"
-solardatafolder = "/Volumes/macdrive/updatedsolarcomb/"
+winddatafolder = "/Users/matt/SCORESdata/merraupdated/"
+solardatafolder = "/Users/matt/SCORESdata/adjustedsolar/"
 
 windsitelocs = np.loadtxt(winddatafolder + "site_locs.csv", delimiter=",", skiprows=1)
 solarsitelocs = np.loadtxt(solardatafolder + "site_locs.csv", delimiter=",", skiprows=1)
@@ -96,6 +96,8 @@ nuclear_generator = NuclearModel(
     year_max=2019,
     data_path=winddatafolder,
     capacities=[1],
+    limits=[7600, 24000],
+    loadfactor=0.9,
 )
 
 print(np.sum(nuclear_generator.power_out))
@@ -118,7 +120,7 @@ offshoregenerator = OffshoreWindModel15000(
     n_turbine=[1] * len(offshore_sites),
     force_run=True,
     power_curve=offshorepowercurve,
-    limits=[0, 100000],
+    limits=[0, 700000],
 )
 print("Calculating onshore output")
 onshoregenerator = OnshoreWindModel4000(
@@ -149,12 +151,14 @@ Gasgen = DispatchableGenerator(
     year_min=yearmin,
     year_max=yearmax,
     capacities=[1],
-    capex=1 * 10**3,
-    opex=1,
-    fuel_cost=1,
-    carbon_cost=5,
-    variable_opex=5,
+    capex=2 * 1878.53 * 10**3,
+    opex=19.68 * 10**3,
+    fuel_cost=44,
+    carbon_cost=4.15,
+    variable_opex=4.01,
+    limits=[0, 40000],
 )
+runname = "highhydrogen2xDoEgas40GWlimit"
 # Gasgen = DispatchableGenerator(
 #     gentype="Gas",
 #     year_min=yearmin,
@@ -167,20 +171,28 @@ Gasgen = DispatchableGenerator(
 #     variable_opex=5,
 # )
 # %%
-generators = [offshoregenerator, onshoregenerator, solar_generator]
+generators = [onshoregenerator, offshoregenerator, solar_generator, nuclear_generator]
 
 # Define the Storage
 
 B = BatteryStorageModel()
-H = HydrogenStorageModel()
-storage = [H, B]
+H = HydrogenStorageModel(
+    chargeCapex=1610 * 10**3,
+    chargeFixedOpex=50.13 * 10**3,
+    chargeVarOpex=0.002977 * 10**3,
+    hurdleRate=0.065,
+    max_c_rate=0.6,
+    max_d_rate=1.2,
+)
+storage = [B, H]
 
 
 # Define Demand
 # Initialise LinProg Model
+print(f"Running model: {runname}")
 x = System_LinProg_Model(
     surplus=-demand,
-    fossilLimit=0.01,
+    fossilLimit=0.0001,
     Mult_Stor=MultipleStorageAssets(storage),
     Mult_aggEV=aggEV.MultipleAggregatedEVs([]),
     gen_list=generators,
@@ -191,17 +203,19 @@ x = System_LinProg_Model(
 # get the wind time series
 # Form the Linear Program Model
 x.Form_Model()
-
+# print the time sizing started at
+print(datetime.datetime.now())
 # Solve the Linear Program
 x.Run_Sizing(solver="gurobi")
 
 # %%
+# get the charge  time series for the 2nd storage asset
 # %%
 
 
 # Store Results
-x.df_capacity.to_csv("log/mixedsystemcapacitieshighh2cost.csv", index=False)
-x.df_costs.to_csv("log/mixedsystemcosts.csv", index=False)
+x.df_capacity.to_csv(f"log/{runname}Capacities.csv", index=False)
+x.df_costs.to_csv(f"log/{runname}Costs.csv", index=False)
 # %%
 
 
