@@ -651,7 +651,7 @@ class MultipleStorageAssets:
         assets,
         c_order=None,
         d_order=None,
-        DispatchableAsset=None,
+        DispatchableAssetList=None,
         DispatchTimeHorizon=24,
     ):
         """
@@ -682,9 +682,9 @@ class MultipleStorageAssets:
             []
         )  # the necessary fossil fuel generation timeseries from the last optimise run
         self.Shed = np.empty([])  # timeseries of surplus shedding
-        self.DispatchableAsset = DispatchableAsset
+        self.DispatchableAssetList = DispatchableAssetList
         self.DispatchTimeHorizon = DispatchTimeHorizon
-        if DispatchableAsset is not None:
+        if DispatchableAssetList is not None:
             self.DispatchEnabled = True
         else:
             self.DispatchEnabled = False
@@ -957,8 +957,9 @@ class MultipleStorageAssets:
                         # if there is any hour in the time horizon where the storage levels are zero, we want to dispatch the dispatchable asset.
                         # we are not dispatching our future predictions, we are dispatching the current hour
                         if summedstorelevels <= 0:
-                            t_surplus = self.DispatchableAsset.dispatch(t, t_surplus)
-                            output[t] = t_surplus
+                            for DispatachableAsset in self.DispatchableAssetlist:
+                                t_surplus = DispatachableAsset.dispatch(t, t_surplus)
+                                output[t] = t_surplus
                             break
 
                 for i in range(self.n_assets):
