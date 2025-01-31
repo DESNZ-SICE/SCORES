@@ -666,6 +666,8 @@ class MultipleStorageAssets:
             prioritised for charging under 'ordered' operation
         d_order: (Array<int>) a list of the order which assets should be
             prioritised for discharging under 'ordered' operation
+        DispatchableAssetList: (Array<DispatchableAsset>) a list of dispatchable assets, in merit order
+
 
         == returns ==
         None
@@ -957,8 +959,8 @@ class MultipleStorageAssets:
                         # if there is any hour in the time horizon where the storage levels are zero, we want to dispatch the dispatchable asset.
                         # we are not dispatching our future predictions, we are dispatching the current hour
                         if summedstorelevels <= 0:
-                            for DispatachableAsset in self.DispatchableAssetlist:
-                                t_surplus = DispatachableAsset.dispatch(t, t_surplus)
+                            for DispatchableAsset in self.DispatchableAssetList:
+                                t_surplus = DispatchableAsset.dispatch(t, t_surplus)
                                 output[t] = t_surplus
                             break
 

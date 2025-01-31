@@ -40,7 +40,7 @@ class ElectricitySystem:
         start_up_time=0,
         strategy="ordered",
         aggEV_list=aggEV.MultipleAggregatedEVs([]),
-        DispatchableAsset=None,
+        DispatchableAssetList=None,
         DispatchTimeHorizon=24,
     ):
         """
@@ -83,7 +83,11 @@ class ElectricitySystem:
         # initialise bounds that are used for optimisation
         self.min_gen_cap = [0.0] * len(gen_list)
         self.max_gen_cap = [np.inf] * len(gen_list)
-        self.storage = MultipleStorageAssets(stor_list, DispatchableAsset=DispatchableAsset, DispatchTimeHorizon=DispatchTimeHorizon)
+        self.storage = MultipleStorageAssets(
+            stor_list,
+            DispatchableAssetList=DispatchableAssetList,
+            DispatchTimeHorizon=DispatchTimeHorizon,
+        )
 
         for gen in self.gen_list:
             # if max(gen.power_out_scaled) == 0:
@@ -170,22 +174,30 @@ class ElectricitySystem:
         if return_output is True:
         (Array<float>) the smoothed supply profile
         """
-        if self.n_storage == 1:
-            rel = self.storage.units[0].charge_sim(
-                self.surplus,
-                t_res=self.t_res,
-                return_output=return_output,
-                return_soc=return_soc,
-                start_up_time=start_up_time,
-            )
-        else:
-            rel = self.storage.charge_sim(
-                self.surplus,
-                t_res=self.t_res,
-                start_up_time=start_up_time,
-                return_output=return_output,
-                strategy=strategy,
-            )
+        # if self.n_storage == 1:
+        #     rel = self.storage.units[0].charge_sim(
+        #         self.surplus,
+        #         t_res=self.t_res,
+        #         return_output=return_output,
+        #         return_soc=return_soc,
+        #         start_up_time=start_up_time,
+        #     )
+        # else:
+        #     rel = self.storage.charge_sim(
+        #         self.surplus,
+        #         t_res=self.t_res,
+        #         start_up_time=start_up_time,
+        #         return_output=return_output,
+        #         strategy=strategy,
+        #     )
+
+        rel = self.storage.charge_sim(
+            self.surplus,
+            t_res=self.t_res,
+            start_up_time=start_up_time,
+            return_output=return_output,
+            strategy=strategy,
+        )
         return rel
 
     def get_cost(self, verbose=1):
