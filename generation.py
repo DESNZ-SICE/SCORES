@@ -2610,6 +2610,51 @@ class OffshoreWindModel3000(OffshoreWindModel):
         # based on Vestas V90 3MW: https://en.wind-turbine-models.com/turbines/603-vestas-v90-3.0
 
 
+class OffshoreWindModel4000(OffshoreWindModel):
+    def __init__(
+        self,
+        sites=["all"],
+        year_min=2013,
+        year_max=2019,
+        months=list(range(1, 13)),
+        data_path="",
+        save_path="stored_model_runs/",
+        save=True,
+        n_turbine=None,
+        power_curve=None,
+        year_online=None,
+        month_online=None,
+        force_run=False,
+        limits=[0, 1000000],
+    ):
+        super().__init__(
+            sites=sites,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            tilt=5,
+            air_density=1.23,
+            rotor_diameter=112,
+            rated_rotor_rpm=15,
+            rated_wind_speed=14,
+            v_cut_in=3.5,
+            v_cut_out=28,
+            n_turbine=n_turbine,
+            turbine_size=4,
+            hub_height=92.5,
+            data_path=data_path,
+            save_path=save_path,
+            save=save,
+            year_online=year_online,
+            month_online=month_online,
+            force_run=force_run,
+            limits=limits,
+            power_curve=power_curve,
+        )
+
+        # based on Siemens SWT-4.0-130: https://en.wind-turbine-models.com/turbines/1102-siemens-swt-4.0-130
+
+
 class OffshoreWindModel5000(OffshoreWindModel):
     def __init__(
         self,
@@ -2776,7 +2821,7 @@ class OffshoreWindModel8000(OffshoreWindModel):
             v_cut_out=28,
             n_turbine=n_turbine,
             turbine_size=8,
-            hub_height=140,
+            hub_height=130,
             data_path=data_path,
             save_path=save_path,
             save=save,
@@ -2787,6 +2832,49 @@ class OffshoreWindModel8000(OffshoreWindModel):
             power_curve=power_curve,
         )
         # based on Vestas V164-8MW: https://en.wind-turbine-models.com/turbines/318-vestas-v164-8.0
+
+
+class OffshoreWindModel9000(OffshoreWindModel):
+    def __init__(
+        self,
+        sites=["all"],
+        year_min=2013,
+        year_max=2019,
+        months=list(range(1, 13)),
+        data_path="",
+        save_path="stored_model_runs/",
+        save=True,
+        n_turbine=None,
+        power_curve=None,
+        year_online=None,
+        month_online=None,
+        force_run=False,
+        limits=[0, 1000000],
+    ):
+        super().__init__(
+            sites=sites,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            tilt=5,
+            air_density=1.23,
+            rotor_diameter=177,
+            rated_rotor_rpm=11,
+            rated_wind_speed=11.5,
+            v_cut_in=4,
+            v_cut_out=28,
+            n_turbine=n_turbine,
+            turbine_size=9,
+            hub_height=135,
+            data_path=data_path,
+            save_path=save_path,
+            save=save,
+            year_online=year_online,
+            month_online=month_online,
+            force_run=force_run,
+            limits=limits,
+            power_curve=power_curve,
+        )
 
 
 class OffshoreWindModel10000(OffshoreWindModel):
@@ -2820,7 +2908,7 @@ class OffshoreWindModel10000(OffshoreWindModel):
             v_cut_out=28,
             n_turbine=n_turbine,
             turbine_size=10,
-            hub_height=135,
+            hub_height=140,
             data_path=data_path,
             save_path=save_path,
             save=save,
@@ -3450,10 +3538,12 @@ class generatordictionaries:
         self.offshore = {
             2: OffshoreWindModel2000,
             3: OffshoreWindModel3000,
+            4: OffshoreWindModel4000,
             5: OffshoreWindModel5000,
             6: OffshoreWindModel6000,
             7: OffshoreWindModel7000,
             8: OffshoreWindModel8000,
+            9: OffshoreWindModel9000,
             10: OffshoreWindModel10000,
             11: OffshoreWindModel11000,
             12: OffshoreWindModel12000,
