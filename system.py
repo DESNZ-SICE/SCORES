@@ -42,6 +42,7 @@ class ElectricitySystem:
         aggEV_list=aggEV.MultipleAggregatedEVs([]),
         DispatchableAssetList=None,
         DispatchTimeHorizon=24,
+        Interconnector=None,
     ):
         """
         == description ==
@@ -87,6 +88,7 @@ class ElectricitySystem:
             stor_list,
             DispatchableAssetList=DispatchableAssetList,
             DispatchTimeHorizon=DispatchTimeHorizon,
+            Interconnector=Interconnector,
         )
 
         for gen in self.gen_list:
