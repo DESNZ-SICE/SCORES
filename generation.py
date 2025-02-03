@@ -365,6 +365,125 @@ class DispatchableGenerator(GenerationModel):
             return 0
 
 
+class Interconnector(GenerationModel):
+    def __init__(
+        self,
+        sites=[0],
+        year_min=2013,
+        year_max=2019,
+        months=list(range(1, 13)),
+        capex=4000000,
+        opex=50000,
+        gentype="Interconnector",
+        fuel_cost=10,
+        carbon_cost=5,
+        variable_opex=2,
+        year_online=None,
+        month_online=None,
+        capacities=[1000],
+        limits=[0, 1000000],
+        lifetime=40,
+        hurdlerate=0.07,
+    ):
+        """
+        == description ==
+        Initialises an Interconnector object.
+        == parameters ==
+        sites: (Array<int>) List of site indexes to be used
+        year_min: (int) earliest year in simulation
+        year_max: (int) latest year in simulation
+        months: (Array<int>) list of months to be included in the simulation
+        capex: (float) cost incurred per MW of installation in GBP
+        opex: (float) yearly cost per MW of installation in GBP
+        gentype: (str) type of generation unit: this is used to name the generator
+        fuel_cost: (float) cost incurred per MWh of generation in GBP
+        carbon_cost: (float) cost incurred per MWh of generation in GBP
+        variable_opex: (float) cost incurred per MWh of generation in GBP
+        year_online: list(int) year the generation unit was installed, at each site
+        month_online: list(int) month the generation unit was installed, at each site
+        capacities: (Array <float>) installed capacity of each site in MW
+        limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
+        lifetime: (int) lifetime of the generation unit in years
+        hurdlerate: (float) hurdle rate for the generation unit
+        == returns ==
+        None
+        """
+
+        self.variable_cost = fuel_cost + carbon_cost + variable_opex
+        super().__init__(
+            sites,
+            year_min,
+            year_max,
+            months,
+            capex,
+            opex,
+            self.variable_cost,
+            f"Dispatchable_{gentype}",
+            "",
+            "",
+            year_online=year_online,
+            month_online=month_online,
+            limits=limits,
+            lifetime=lifetime,
+            hurdlerate=hurdlerate,
+        )
+        self.total_installed_capacity = sum(capacities)
+        self.total_exported = 0
+        self.total_imported = 0
+        self.plant_type = gentype
+
+    def __str__(self):
+        return f"{self.plant_type} Generator, total capacity: {self.total_installed_capacity} MW"
+
+    def dispatch(self, t, demand):
+        """
+        == description ==
+        This function dispatches the interconnector in an attempt to meet surplus demand
+
+        == parameters ==
+        t: (int) time index
+        demand: (float) demand at time t. This will be a negative value
+
+        == returns ==
+        (float) unmet demand
+        """
+        if demand + self.total_installed_capacity < 0:
+            self.power_out[t] = self.total_installed_capacity
+            self.power_out_array[t] = self.total_installed_capacity
+            self.total_imported += self.total_installed_capacity
+            return demand + self.total_installed_capacity
+        else:
+            self.power_out[t] = abs(demand)
+            self.power_out_array[t] = abs(demand)
+            self.total_imported += abs(demand)
+            return 0
+
+    def export(self, t, surplus):
+        """
+        == description ==
+        This function exports the surplus power internationally
+
+        == parameters ==
+        t: (int) time index
+        surplus: (float) surplus power at time t
+
+        == returns ==
+        None
+        """
+        if surplus > 0:
+            if surplus < self.total_installed_capacity:
+                self.power_out[t] = -surplus
+                self.power_out_array[t] = -surplus
+                self.total_exported += surplus
+                return 0
+            else:
+                self.power_out[t] = -self.total_installed_capacity
+                self.power_out_array[t] = -self.total_installed_capacity
+                self.total_exported += self.total_installed_capacity
+                return surplus - self.total_installed_capacity
+        return surplus
+
+
 class NuclearModel(GenerationModel):
     def __init__(
         self,
