@@ -125,6 +125,7 @@ class StorageModel:
         self.en_in = 0  # total energy into storage (grid side)
         self.en_out = 0  # total energy out of storage (grid side)
         self.curt = 0  # total supply that could not be stored
+        self.curtarray = []
         # from optimise setting only (added by Mac)
         self.discharge = np.empty([])  # timeseries of discharge rate (grid side) MW
         self.charge = 0  # store state of charge in MWh
@@ -406,6 +407,7 @@ class StorageModel:
         self.start_up_time = start_up_time
         self.charge = 0.0  # intialise stosrage as empty
         self.output = [0] * len(surplus)
+        self.curtarray = np.zeros(len(surplus))
         self.missed_demand = [0] * len(surplus)
         self.n_years = len(surplus) / (365.25 * 24 / t_res)
         self.energy_shortfalls = 0
@@ -653,6 +655,7 @@ class MultipleStorageAssets:
         d_order=None,
         DispatchableAssetList=None,
         DispatchTimeHorizon=24,
+        Interconnector=None,
     ):
         """
         == description ==
@@ -686,6 +689,7 @@ class MultipleStorageAssets:
         self.Shed = np.empty([])  # timeseries of surplus shedding
         self.DispatchableAssetList = DispatchableAssetList
         self.DispatchTimeHorizon = DispatchTimeHorizon
+        self.Interconnector = Interconnector
         if DispatchableAssetList is not None:
             self.DispatchEnabled = True
         else:
@@ -830,6 +834,7 @@ class MultipleStorageAssets:
         self.energy_shortfalls = 0
 
         output = [0] * len(surplus)
+        self.curtarray = np.zeros(len(surplus))
         soc = []
         for i in range(self.n_assets):
             soc.append([i])
@@ -872,7 +877,12 @@ class MultipleStorageAssets:
                         if t > start_up_time:
                             di_profiles[i]["c"][t % T] += output[t] - t_surplus
                         t_surplus = self.units[c_order[i]].output[t]
+                if self.Interconnector != None:
+                    t_surplus = self.Interconnector.export(t, t_surplus)
+                    output[t] = t_surplus
+
                 self.curt += output[t]
+                self.curtarray[t] = output[t]
 
             elif t_surplus < 0:
                 if self.DispatchEnabled:
