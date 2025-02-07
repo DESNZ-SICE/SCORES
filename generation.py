@@ -673,7 +673,7 @@ class OffshoreWindModel(GenerationModel):
         turbine_size=9.5,
         data_path="",
         hub_height=122,
-        data_height=50,
+        data_height=100,
         alpha=0.143,  # this line added by CQ
         save_path="stored_model_runs/",
         save=True,
@@ -684,6 +684,7 @@ class OffshoreWindModel(GenerationModel):
         power_curve=None,
         lifetime=25,
         hurdlerate=0.052,
+        scaling_factor=1,
     ):
         """
         == description ==
@@ -952,7 +953,7 @@ class OffshoreWindModel(GenerationModel):
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
         # currently installed capacity: the values should not
-
+        self.speeds = site_speeds
         self.power_out = self.power_out_array.tolist()
         self.scale_output(self.total_installed_capacity)
 
@@ -1376,7 +1377,7 @@ class OnshoreWindModel(GenerationModel):
         data_path="",
         save_path="stored_model_runs/",
         save=True,
-        data_height=50,
+        data_height=100,
         alpha=0.143,  # this row added by CQ to calculate wind shear
         power_curve=None,
         year_online=None,
@@ -1385,6 +1386,7 @@ class OnshoreWindModel(GenerationModel):
         limits=[0, 1000000],
         lifetime=25,
         hurdlerate=0.052,
+        scaling_factor=1,
     ):  # this added by CQ so that a power curve can optionally be imported
         """
         == description ==
@@ -1436,7 +1438,6 @@ class OnshoreWindModel(GenerationModel):
             hurdlerate=hurdlerate,
             lifetime=lifetime,
         )
-
         # If no values given assume an equl distribution of turbines over sites
         self.tilt = tilt
         self.air_density = air_density
@@ -1451,6 +1452,7 @@ class OnshoreWindModel(GenerationModel):
         self.data_height = data_height  # added by CQ
         self.alpha = alpha  # added by CQ
         self.power_curve = power_curve
+        self.scaling_factor = scaling_factor
 
         file_name = get_filename(
             sites, "w" + str(turbine_size), year_min, year_max, months
@@ -1606,8 +1608,8 @@ class OnshoreWindModel(GenerationModel):
 
             site_speeds = site_speeds.astype(float)
             site_speeds[site_speeds < 0] = 0
-
             # adjusts the wind speeds to hub height
+            site_speeds = site_speeds * self.scaling_factor
             site_speeds = site_speeds * np.power(
                 self.hub_height / self.data_height, self.alpha
             )
@@ -1632,6 +1634,7 @@ class OnshoreWindModel(GenerationModel):
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
         # currently installed capacity: the values should not
+        self.speeds = site_speeds
         self.power_out = self.power_out_array.tolist()
         self.scale_output(self.total_installed_capacity)
 
@@ -1740,6 +1743,7 @@ class OnshoreWindModel500(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -1768,6 +1772,7 @@ class OnshoreWindModel500(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
         # based on Vestas V39
@@ -1784,6 +1789,7 @@ class OnshoreWindModel1000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -1812,6 +1818,7 @@ class OnshoreWindModel1000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
         # based on AN Bonus 1000/54
@@ -1828,6 +1835,7 @@ class OnshoreWindModel1500(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -1856,6 +1864,7 @@ class OnshoreWindModel1500(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
         # based on Vestas V82
@@ -1872,6 +1881,7 @@ class OnshoreWindModel2000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -1900,6 +1910,7 @@ class OnshoreWindModel2000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -1957,6 +1968,7 @@ class OnshoreWindModel2500(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -1985,6 +1997,7 @@ class OnshoreWindModel2500(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
         # based on GE 2.5-100
@@ -2001,6 +2014,7 @@ class OnshoreWindModel3000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2029,6 +2043,7 @@ class OnshoreWindModel3000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2044,6 +2059,7 @@ class OnshoreWindModel3600(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2072,6 +2088,7 @@ class OnshoreWindModel3600(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2087,6 +2104,7 @@ class OnshoreWindModel4000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2115,6 +2133,7 @@ class OnshoreWindModel4000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2130,6 +2149,7 @@ class OnshoreWindModel5000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2158,6 +2178,7 @@ class OnshoreWindModel5000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2173,6 +2194,7 @@ class OnshoreWindModel6000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2201,6 +2223,7 @@ class OnshoreWindModel6000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2216,6 +2239,7 @@ class OnshoreWindModel6600(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2244,6 +2268,7 @@ class OnshoreWindModel6600(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2259,6 +2284,7 @@ class OnshoreWindModel7000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2287,6 +2313,7 @@ class OnshoreWindModel7000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2302,6 +2329,7 @@ class OnshoreWindModel8000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2330,6 +2358,7 @@ class OnshoreWindModel8000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2345,6 +2374,7 @@ class OnshoreWindModel9000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2373,6 +2403,7 @@ class OnshoreWindModel9000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2388,6 +2419,7 @@ class OnshoreWindModel10000(OnshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2416,6 +2448,7 @@ class OnshoreWindModel10000(OnshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2431,6 +2464,7 @@ class OffshoreWindModel2000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2459,6 +2493,7 @@ class OffshoreWindModel2000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2476,6 +2511,7 @@ class OffshoreWindModel3000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2504,10 +2540,58 @@ class OffshoreWindModel3000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
         # based on Vestas V90 3MW: https://en.wind-turbine-models.com/turbines/603-vestas-v90-3.0
+
+
+class OffshoreWindModel4000(OffshoreWindModel):
+    def __init__(
+        self,
+        sites=["all"],
+        year_min=2013,
+        year_max=2019,
+        months=list(range(1, 13)),
+        data_path="",
+        save_path="stored_model_runs/",
+        save=True,
+        n_turbine=None,
+        scaling_factor=1,
+        power_curve=None,
+        year_online=None,
+        month_online=None,
+        force_run=False,
+        limits=[0, 1000000],
+    ):
+        super().__init__(
+            sites=sites,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            tilt=5,
+            air_density=1.23,
+            rotor_diameter=108,
+            rated_rotor_rpm=15,
+            rated_wind_speed=14,
+            v_cut_in=3.2,
+            v_cut_out=26,
+            n_turbine=n_turbine,
+            turbine_size=4,
+            hub_height=90,
+            data_path=data_path,
+            save_path=save_path,
+            save=save,
+            year_online=year_online,
+            month_online=month_online,
+            force_run=force_run,
+            limits=limits,
+            scaling_factor=scaling_factor,
+            power_curve=power_curve,
+        )
+
+        # based on Siemens SWT-4.0-130: https://en.wind-turbine-models.com/turbines/1102-siemens-swt-4.0-130
 
 
 class OffshoreWindModel5000(OffshoreWindModel):
@@ -2521,6 +2605,7 @@ class OffshoreWindModel5000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2549,8 +2634,11 @@ class OffshoreWindModel5000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
+
+        # based on Repower 5M: https://www.thewindpower.net/turbine_en_14_repower_5m.php
 
         # Based on Repower 5M: https://www.thewindpower.net/turbine_en_14_repower_5m.php
 
@@ -2566,6 +2654,7 @@ class OffshoreWindModel6000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2594,6 +2683,7 @@ class OffshoreWindModel6000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
         # based on Siemens SWT-6.0-154: https://en.wind-turbine-models.com/turbines/657-siemens-swt-6.0-154
@@ -2611,6 +2701,7 @@ class OffshoreWindModel7000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2639,6 +2730,7 @@ class OffshoreWindModel7000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
         # based on Siemens SWT-7.0-154: https://en.wind-turbine-models.com/turbines/1102-siemens-swt-7.0-154
@@ -2656,6 +2748,7 @@ class OffshoreWindModel8000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2684,6 +2777,7 @@ class OffshoreWindModel8000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
         # based on Vestas V164-8MW: https://en.wind-turbine-models.com/turbines/318-vestas-v164-8.0
@@ -2700,6 +2794,7 @@ class OffshoreWindModel10000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2728,6 +2823,7 @@ class OffshoreWindModel10000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2743,6 +2839,7 @@ class OffshoreWindModel11000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2771,6 +2868,7 @@ class OffshoreWindModel11000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2786,6 +2884,7 @@ class OffshoreWindModel12000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2814,6 +2913,7 @@ class OffshoreWindModel12000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2829,6 +2929,7 @@ class OffshoreWindModel13000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2857,6 +2958,7 @@ class OffshoreWindModel13000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2872,6 +2974,7 @@ class OffshoreWindModel14000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2900,6 +3003,7 @@ class OffshoreWindModel14000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2915,6 +3019,7 @@ class OffshoreWindModel15000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2943,6 +3048,7 @@ class OffshoreWindModel15000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -2958,6 +3064,7 @@ class OffshoreWindModel16000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -2986,6 +3093,7 @@ class OffshoreWindModel16000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -3001,6 +3109,7 @@ class OffshoreWindModel17000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -3029,6 +3138,7 @@ class OffshoreWindModel17000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -3044,6 +3154,7 @@ class OffshoreWindModel18000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -3072,6 +3183,7 @@ class OffshoreWindModel18000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -3087,6 +3199,7 @@ class OffshoreWindModel19000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -3115,6 +3228,7 @@ class OffshoreWindModel19000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -3130,6 +3244,7 @@ class OffshoreWindModel20000(OffshoreWindModel):
         save_path="stored_model_runs/",
         save=True,
         n_turbine=None,
+        scaling_factor=1,
         power_curve=None,
         year_online=None,
         month_online=None,
@@ -3158,6 +3273,7 @@ class OffshoreWindModel20000(OffshoreWindModel):
             month_online=month_online,
             force_run=force_run,
             limits=limits,
+            scaling_factor=scaling_factor,
             power_curve=power_curve,
         )
 
@@ -3350,6 +3466,7 @@ class generatordictionaries:
         self.offshore = {
             2: OffshoreWindModel2000,
             3: OffshoreWindModel3000,
+            4: OffshoreWindModel4000,
             5: OffshoreWindModel5000,
             6: OffshoreWindModel6000,
             7: OffshoreWindModel7000,
