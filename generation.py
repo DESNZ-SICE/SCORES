@@ -339,6 +339,9 @@ class DispatchableGenerator(GenerationModel):
         self.total_installed_capacity = sum(capacities)
 
         self.plant_type = gentype
+        self.max_possible_output = self.total_installed_capacity * len(
+            self.power_out_array
+        )
 
     def __str__(self):
         return f"{self.plant_type} Generator, total capacity: {self.total_installed_capacity} MW"
