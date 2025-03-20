@@ -224,65 +224,65 @@ for turbsize in offshoreturbinesizes:
     print(
         f"{turbsize}MW mean load factor: {offshoredata[f'{turbsize}MW Load Factor'].mean()}"
     )
-offshoredata.to_excel(sitedatalocation + "Offshore_Sites_simulated.xlsx")
+offshoredata.to_excel(sitedatalocation + "Offshore_Sites_simulated_redux.xlsx")
 # same again for onshore
 
-# iterate through our unique onshore sites
-onshoreloadfactordict = {}
-print("Simulating onshore sites")
-for index, site in enumerate(uniqueonshoresites):
-    print(f"Simulating site {index+1} of {len(uniqueonshoresites)}")
-    sitedict = {}
-    # get the data for this site
+# # iterate through our unique onshore sites
+# onshoreloadfactordict = {}
+# print("Simulating onshore sites")
+# for index, site in enumerate(uniqueonshoresites):
+#     print(f"Simulating site {index+1} of {len(uniqueonshoresites)}")
+#     sitedict = {}
+#     # get the data for this site
 
-    # get the number of turbines
-    numberofturbines = 1
-    # iterate through the turbine sizes
-    for gensize in onshoreturbinesizes:
-        # load the power curve
-        # powercurve = np.loadtxt(
-        #     "/Users/matt/code/Processing-toolkit/optonshorepowercurve.csv",
-        #     delimiter=",",
-        #     skiprows=1,
-        # )
-        # powercurve *= gensize
-        # get the generator object
-        powercurve = np.loadtxt(
-            powercurvelocation + f"{gensize}_MW.csv", delimiter=",", skiprows=1
-        )
-        genobject = generation.generatordictionaries().onshore[gensize]
-        # run the generator
-        datarun = genobject(
-            sites=[site],
-            year_min=yearmin,
-            year_max=yearmax,
-            data_path=winddatapath,
-            n_turbine=[numberofturbines],
-            force_run=True,
-            power_curve=powercurve,
-        )
-        # get the load factor
-        loadfactor = datarun.get_load_factor()
-        sitedict[gensize] = loadfactor
-    onshoreloadfactordict[site] = copy.deepcopy(sitedict)
+#     # get the number of turbines
+#     numberofturbines = 1
+#     # iterate through the turbine sizes
+#     for gensize in onshoreturbinesizes:
+#         # load the power curve
+#         # powercurve = np.loadtxt(
+#         #     "/Users/matt/code/Processing-toolkit/optonshorepowercurve.csv",
+#         #     delimiter=",",
+#         #     skiprows=1,
+#         # )
+#         # powercurve *= gensize
+#         # get the generator object
+#         powercurve = np.loadtxt(
+#             powercurvelocation + f"{gensize}_MW.csv", delimiter=",", skiprows=1
+#         )
+#         genobject = generation.generatordictionaries().onshore[gensize]
+#         # run the generator
+#         datarun = genobject(
+#             sites=[site],
+#             year_min=yearmin,
+#             year_max=yearmax,
+#             data_path=winddatapath,
+#             n_turbine=[numberofturbines],
+#             force_run=True,
+#             power_curve=powercurve,
+#         )
+#         # get the load factor
+#         loadfactor = datarun.get_load_factor()
+#         sitedict[gensize] = loadfactor
+#     onshoreloadfactordict[site] = copy.deepcopy(sitedict)
 
 # now we're going to iterate through each row of the onshore data, and add the load factors to the dataframe. We'll also add a column with the site number
 
-for turbsize in onshoreturbinesizes:
-    onshoredata[f"{turbsize}MW Load Factor"] = onshoredata["site"].apply(
-        lambda x: onshoreloadfactordict[x][turbsize]
-    )
-    onshoredata[f"{turbsize}MW Load Factor"] = onshoredata[
-        f"{turbsize}MW Load Factor"
-    ].astype(float)
+# for turbsize in onshoreturbinesizes:
+#     onshoredata[f"{turbsize}MW Load Factor"] = onshoredata["site"].apply(
+#         lambda x: onshoreloadfactordict[x][turbsize]
+#     )
+#     onshoredata[f"{turbsize}MW Load Factor"] = onshoredata[
+#         f"{turbsize}MW Load Factor"
+#     ].astype(float)
 
-# print the mean load factor for each turb size
-for turbsize in onshoreturbinesizes:
-    print(
-        f"{turbsize}MW mean load factor: {onshoredata[f'{turbsize}MW Load Factor'].mean()}"
-    )
+# # print the mean load factor for each turb size
+# for turbsize in onshoreturbinesizes:
+#     print(
+#         f"{turbsize}MW mean load factor: {onshoredata[f'{turbsize}MW Load Factor'].mean()}"
+#     )
 
-# now save onshore data to an excel file
-onshoredata.to_excel(sitedatalocation + "Onshore_Sites_simulated.xlsx")
+# # now save onshore data to an excel file
+# onshoredata.to_excel(sitedatalocation + "Onshore_Sites_simulated.xlsx")
 
 # now we're going to do the same for offshore sites
