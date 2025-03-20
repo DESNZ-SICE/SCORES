@@ -65,6 +65,7 @@ class GenerationModel:
         self.data_path = data_path
         self.save_path = save_path
         self.limits = limits
+        self.lifetime = lifetime
         self.max_possible_output = 0  # keeps track of max possible output: this ensures the load factor accounts for the year and month the generator came online
         # if no online date is given, assume the generator is online from the start
         if year_online is None:
@@ -265,6 +266,225 @@ class GenerationModel:
         ) * totalcapex
         fixed_cost = yearlyreturncost + yearlyopex
         return fixed_cost
+
+    def calculate_LCOE(self):
+        """Calculates the LCOE of the generator"""
+        loadfactor = self.get_load_factor()
+        lcoe = ((self.fixed_cost) + loadfactor * self.variable_cost) / loadfactor
+        return lcoe
+
+
+class DispatchableGenerator(GenerationModel):
+    def __init__(
+        self,
+        sites=[0],
+        year_min=2013,
+        year_max=2019,
+        months=list(range(1, 13)),
+        capex=4000000,
+        opex=50000,
+        gentype="Gas",
+        fuel_cost=10,
+        carbon_cost=5,
+        variable_opex=2,
+        year_online=None,
+        month_online=None,
+        capacities=[1000],
+        limits=[0, 1000000],
+        lifetime=40,
+        hurdlerate=0.07,
+    ):
+        """
+        == description ==
+        Initialises a DispatchableGenerator object.
+        == parameters ==
+        sites: (Array<int>) List of site indexes to be used
+        year_min: (int) earliest year in simulation
+        year_max: (int) latest year in simulation
+        months: (Array<int>) list of months to be included in the simulation
+        capex: (float) cost incurred per MW of installation in GBP
+        opex: (float) yearly cost per MW of installation in GBP
+        gentype: (str) type of generation unit: this is used to name the generator
+        fuel_cost: (float) cost incurred per MWh of generation in GBP
+        carbon_cost: (float) cost incurred per MWh of generation in GBP
+        variable_opex: (float) cost incurred per MWh of generation in GBP
+        year_online: list(int) year the generation unit was installed, at each site
+        month_online: list(int) month the generation unit was installed, at each site
+        capacities: (Array <float>) installed capacity of each site in MW
+        limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
+        lifetime: (int) lifetime of the generation unit in years
+        hurdlerate: (float) hurdle rate for the generation unit
+        == returns ==
+        None
+        """
+
+        self.variable_cost = fuel_cost + carbon_cost + variable_opex
+        super().__init__(
+            sites,
+            year_min,
+            year_max,
+            months,
+            capex,
+            opex,
+            self.variable_cost,
+            f"Dispatchable_{gentype}",
+            "",
+            "",
+            year_online=year_online,
+            month_online=month_online,
+            limits=limits,
+            lifetime=lifetime,
+            hurdlerate=hurdlerate,
+        )
+        self.total_installed_capacity = sum(capacities)
+
+        self.plant_type = gentype
+        self.max_possible_output = self.total_installed_capacity * len(
+            self.power_out_array
+        )
+
+    def __str__(self):
+        return f"{self.plant_type} Generator, total capacity: {self.total_installed_capacity} MW"
+
+    def dispatch(self, t, demand):
+        """
+        == description ==
+        This function dispatches the generator in an attempt to meet surplus demand
+
+        == parameters ==
+        t: (int) time index
+        demand: (float) demand at time t. This will be a negative value
+
+        == returns ==
+        (float) unmet demand
+        """
+        if demand + self.total_installed_capacity < 0:
+            self.power_out[t] = self.total_installed_capacity
+            self.power_out_array[t] = self.total_installed_capacity
+            return demand + self.total_installed_capacity
+        else:
+            self.power_out[t] = abs(demand)
+            self.power_out_array[t] = abs(demand)
+            return 0
+
+
+class Interconnector(GenerationModel):
+    def __init__(
+        self,
+        sites=[0],
+        year_min=2013,
+        year_max=2019,
+        months=list(range(1, 13)),
+        capex=4000000,
+        opex=50000,
+        gentype="Interconnector",
+        fuel_cost=10,
+        carbon_cost=5,
+        variable_opex=2,
+        year_online=None,
+        month_online=None,
+        capacities=[1000],
+        limits=[0, 1000000],
+        lifetime=40,
+        hurdlerate=0.07,
+    ):
+        """
+        == description ==
+        Initialises an Interconnector object.
+        == parameters ==
+        sites: (Array<int>) List of site indexes to be used
+        year_min: (int) earliest year in simulation
+        year_max: (int) latest year in simulation
+        months: (Array<int>) list of months to be included in the simulation
+        capex: (float) cost incurred per MW of installation in GBP
+        opex: (float) yearly cost per MW of installation in GBP
+        gentype: (str) type of generation unit: this is used to name the generator
+        fuel_cost: (float) cost incurred per MWh of generation in GBP
+        carbon_cost: (float) cost incurred per MWh of generation in GBP
+        variable_opex: (float) cost incurred per MWh of generation in GBP
+        year_online: list(int) year the generation unit was installed, at each site
+        month_online: list(int) month the generation unit was installed, at each site
+        capacities: (Array <float>) installed capacity of each site in MW
+        limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
+        lifetime: (int) lifetime of the generation unit in years
+        hurdlerate: (float) hurdle rate for the generation unit
+        == returns ==
+        None
+        """
+
+        self.variable_cost = fuel_cost + carbon_cost + variable_opex
+        super().__init__(
+            sites,
+            year_min,
+            year_max,
+            months,
+            capex,
+            opex,
+            self.variable_cost,
+            f"Dispatchable_{gentype}",
+            "",
+            "",
+            year_online=year_online,
+            month_online=month_online,
+            limits=limits,
+            lifetime=lifetime,
+            hurdlerate=hurdlerate,
+        )
+        self.total_installed_capacity = sum(capacities)
+        self.total_exported = 0
+        self.total_imported = 0
+        self.plant_type = gentype
+
+    def __str__(self):
+        return f"{self.plant_type} Generator, total capacity: {self.total_installed_capacity} MW"
+
+    def dispatch(self, t, demand):
+        """
+        == description ==
+        This function dispatches the interconnector in an attempt to meet surplus demand
+
+        == parameters ==
+        t: (int) time index
+        demand: (float) demand at time t. This will be a negative value
+
+        == returns ==
+        (float) unmet demand
+        """
+        if demand + self.total_installed_capacity < 0:
+            self.power_out[t] = self.total_installed_capacity
+            self.power_out_array[t] = self.total_installed_capacity
+            self.total_imported += self.total_installed_capacity
+            return demand + self.total_installed_capacity
+        else:
+            self.power_out[t] = abs(demand)
+            self.power_out_array[t] = abs(demand)
+            self.total_imported += abs(demand)
+            return 0
+
+    def export(self, t, surplus):
+        """
+        == description ==
+        This function exports the surplus power internationally
+
+        == parameters ==
+        t: (int) time index
+        surplus: (float) surplus power at time t
+
+        == returns ==
+        None
+        """
+        if surplus > 0:
+            if surplus < self.total_installed_capacity:
+                self.power_out[t] = -surplus
+                self.power_out_array[t] = -surplus
+                self.total_exported += surplus
+                return 0
+            else:
+                self.power_out[t] = -self.total_installed_capacity
+                self.power_out_array[t] = -self.total_installed_capacity
+                self.total_exported += self.total_installed_capacity
+                return surplus - self.total_installed_capacity
+        return surplus
 
 
 class NuclearModel(GenerationModel):
@@ -659,8 +879,8 @@ class OffshoreWindModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        capex=1189000,
-        opex=29.2 * 1000,
+        capex=1810000,
+        opex=88.6 * 1000,
         variable_cost=1,
         tilt=5,
         air_density=1.23,
@@ -682,7 +902,7 @@ class OffshoreWindModel(GenerationModel):
         force_run=False,
         limits=[0, 1000000],
         power_curve=None,
-        lifetime=25,
+        lifetime=30,
         hurdlerate=0.052,
         scaling_factor=1,
     ):
@@ -737,6 +957,8 @@ class OffshoreWindModel(GenerationModel):
             year_online=year_online,
             month_online=month_online,
             limits=limits,
+            hurdlerate=hurdlerate,
+            lifetime=lifetime,
         )
 
         self.tilt = tilt
@@ -1362,7 +1584,7 @@ class OnshoreWindModel(GenerationModel):
         year_max=2019,
         months=list(range(1, 13)),
         capex=1230000,
-        opex=30700,
+        opex=30.8 * 1000,
         variable_cost=6,
         tilt=5,
         air_density=1.23,
@@ -2167,7 +2389,7 @@ class OnshoreWindModel5000(OnshoreWindModel):
             rated_rotor_rpm=11.5,
             rated_wind_speed=10.5,
             v_cut_in=4,
-            v_cut_out=28,
+            v_cut_out=25,
             n_turbine=n_turbine,
             turbine_size=5,
             hub_height=100,
@@ -2212,7 +2434,7 @@ class OnshoreWindModel6000(OnshoreWindModel):
             rated_rotor_rpm=11,
             rated_wind_speed=10,
             v_cut_in=4,
-            v_cut_out=28,
+            v_cut_out=25,
             n_turbine=n_turbine,
             turbine_size=6.0,
             hub_height=100,
@@ -2257,7 +2479,7 @@ class OnshoreWindModel6600(OnshoreWindModel):
             rated_rotor_rpm=11,
             rated_wind_speed=10,
             v_cut_in=4,
-            v_cut_out=28,
+            v_cut_out=25,
             n_turbine=n_turbine,
             turbine_size=6.6,
             hub_height=100,
@@ -2302,7 +2524,7 @@ class OnshoreWindModel7000(OnshoreWindModel):
             rated_rotor_rpm=10.5,
             rated_wind_speed=10,
             v_cut_in=4,
-            v_cut_out=28,
+            v_cut_out=25,
             n_turbine=n_turbine,
             turbine_size=7.0,
             hub_height=110,
@@ -2347,7 +2569,7 @@ class OnshoreWindModel8000(OnshoreWindModel):
             rated_rotor_rpm=10.5,
             rated_wind_speed=10,
             v_cut_in=4,
-            v_cut_out=28,
+            v_cut_out=25,
             n_turbine=n_turbine,
             turbine_size=8.0,
             hub_height=120,
@@ -2392,7 +2614,7 @@ class OnshoreWindModel9000(OnshoreWindModel):
             rated_rotor_rpm=10.5,
             rated_wind_speed=10,
             v_cut_in=4,
-            v_cut_out=28,
+            v_cut_out=25,
             n_turbine=n_turbine,
             turbine_size=9.0,
             hub_height=125,
@@ -2437,7 +2659,7 @@ class OnshoreWindModel10000(OnshoreWindModel):
             rated_rotor_rpm=10.5,
             rated_wind_speed=10,
             v_cut_in=4,
-            v_cut_out=28,
+            v_cut_out=25,
             n_turbine=n_turbine,
             turbine_size=10,
             hub_height=130,
@@ -2482,7 +2704,7 @@ class OffshoreWindModel2000(OffshoreWindModel):
             rated_rotor_rpm=19,
             rated_wind_speed=14.5,
             v_cut_in=3.5,
-            v_cut_out=25,
+            v_cut_out=28,
             n_turbine=n_turbine,
             turbine_size=2,
             hub_height=80,
@@ -2529,7 +2751,7 @@ class OffshoreWindModel3000(OffshoreWindModel):
             rated_rotor_rpm=18.4,
             rated_wind_speed=13,
             v_cut_in=3,
-            v_cut_out=25,
+            v_cut_out=28,
             n_turbine=n_turbine,
             turbine_size=3,
             hub_height=80,
@@ -2572,14 +2794,14 @@ class OffshoreWindModel4000(OffshoreWindModel):
             months=months,
             tilt=5,
             air_density=1.23,
-            rotor_diameter=108,
+            rotor_diameter=112,
             rated_rotor_rpm=15,
             rated_wind_speed=14,
-            v_cut_in=3.2,
-            v_cut_out=26,
+            v_cut_in=3.5,
+            v_cut_out=28,
             n_turbine=n_turbine,
             turbine_size=4,
-            hub_height=90,
+            hub_height=92.5,
             data_path=data_path,
             save_path=save_path,
             save=save,
@@ -2808,9 +3030,9 @@ class OffshoreWindModel9000(OffshoreWindModel):
             months=months,
             tilt=5,
             air_density=1.23,
-            rotor_diameter=164,
-            rated_rotor_rpm=11.5,
-            rated_wind_speed=12,
+            rotor_diameter=177,
+            rated_rotor_rpm=11,
+            rated_wind_speed=11.5,
             v_cut_in=4,
             v_cut_out=28,
             n_turbine=n_turbine,
@@ -3175,7 +3397,7 @@ class OffshoreWindModel17000(OffshoreWindModel):
             v_cut_out=28,
             n_turbine=n_turbine,
             turbine_size=17,
-            hub_height=180,
+            hub_height=175,
             data_path=data_path,
             save_path=save_path,
             save=save,
@@ -3265,7 +3487,7 @@ class OffshoreWindModel19000(OffshoreWindModel):
             v_cut_out=28,
             n_turbine=n_turbine,
             turbine_size=19,
-            hub_height=190,
+            hub_height=185,
             data_path=data_path,
             save_path=save_path,
             save=save,
@@ -3310,7 +3532,7 @@ class OffshoreWindModel20000(OffshoreWindModel):
             v_cut_out=28,
             n_turbine=n_turbine,
             turbine_size=20,
-            hub_height=195,
+            hub_height=190,
             data_path=data_path,
             save_path=save_path,
             save=save,

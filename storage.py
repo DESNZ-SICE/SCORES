@@ -22,14 +22,25 @@ from opt_con_class import System_LinProg_Model, store_optimisation_results
 class StorageModel:
     def __init__(
         self,
-        eff_in,
-        eff_out,
-        self_dis,
-        variable_cost,
-        fixed_cost,
-        max_c_rate,
-        max_d_rate,
-        name,
+        eff_in=95,
+        eff_out=95,
+        self_dis=2,
+        storageCapex=391 * 10**3,
+        storageFixedOpex=7.1 * 10**3,
+        storagelifetime=15,
+        storageVarOpex=0,
+        chargeCapex=0,
+        chargeFixedOpex=0,
+        chargeVarOpex=0,
+        chargeLifetime=15,
+        dischargeCapex=0,
+        dischargeFixedOpex=0,
+        dischargeVarOpex=0,
+        dischargeLifetime=15,
+        hurdleRate=0.08,
+        max_c_rate=25,
+        max_d_rate=25,
+        name="Li-Ion Battery",
         capacity=1,
         limits=[0, 1000000000],
         initial_charge=1.0,
@@ -42,7 +53,17 @@ class StorageModel:
         eff_in: (float) charging efficiency in % (0-100)
         eff_out: (float) discharge efficiency in % (0-100)
         self_dis: (float) self discharge rate in % per month (0-100)
-        fixed_cost: (float) cost incurred per MWh-year of installation in GBP
+        storageCapex: (float) cost incurred per MWh of the storage medium in GBP
+        storageFixedOpex: (float) yearly operational cost of the storage medium per MWh in GBP
+        storagelifetime: (int) lifetime of the storage medium in years
+        storageVarOpex: (float) cost incurred per MWh of throughput in GBP
+        chargeCapex: (float) cost incurred per MW of charging equipment in GBP
+        chargeFixedOpex: (float) yearly operational cost of charging equipment per MW in GBP
+        chargeLifetime: (int) lifetime of the charging equipment in years
+        chargeVarOpex: (float) cost incurred per MWh of throughput in GBP
+        dischargeCapex: (float) cost incurred per MW of discharging equipment in GBP
+        dischargeFixedOpex: (float) yearly operational cost of discharging equipment per MW in GBP
+        dischargeLifetime: (int) lifetime of the discharging equipment in years
         variable_cost: (float) cost incurred per MWh of throughput in GBP
         max_c_rate: (float) the maximum charging rate (% per hour)
         max_d_rate: (float) the maximum discharging rate (% per hour)
@@ -61,8 +82,37 @@ class StorageModel:
         self.eff_in = eff_in
         self.eff_out = eff_out
         self.self_dis = self_dis
-        self.variable_cost = variable_cost
-        self.fixed_cost = fixed_cost
+
+        storagefixedcost = self.calculate_fixed_costs(
+            storagelifetime, storageCapex, storageFixedOpex, hurdleRate
+        )
+        self.storage_fixed_cost = storagefixedcost
+        self.storage_variable_cost = storageVarOpex
+        # the storage fixed cost refers of storing the energy. For some technologies (such as li-ion batteries),
+        # the storage cannot be separated from the charging and discharging equipment:
+        # in this case, the charge and discharge costs should be set to zero.
+        # however, for technologies such as hydrogen storage, it is benefical to be able to scale
+        # the storage capacity independently of the charging and discharging equipment.
+
+        chargefixedcost = self.calculate_fixed_costs(
+            chargeLifetime, chargeCapex, chargeFixedOpex, hurdleRate
+        )
+        self.charge_fixed_cost = chargefixedcost
+        self.charge_variable_cost = chargeVarOpex
+        dischargefixedcost = self.calculate_fixed_costs(
+            dischargeLifetime, dischargeCapex, dischargeFixedOpex, hurdleRate
+        )
+        self.discharge_fixed_cost = dischargefixedcost
+        self.discharge_variable_cost = dischargeVarOpex
+        print(f"Storage fixed cost: {storagefixedcost}")
+        print(f"Charge fixed cost: {chargefixedcost*max_c_rate/100}")
+        print(f"Discharge fixed cost: {dischargefixedcost*max_d_rate/100}")
+        self.variable_cost = sum([storageVarOpex, chargeVarOpex, dischargeVarOpex])
+        self.fixed_cost = (
+            storagefixedcost
+            + (max_c_rate / 100) * chargefixedcost
+            + (max_d_rate / 100) * dischargefixedcost
+        )
         self.max_c_rate = max_c_rate
         self.max_d_rate = max_d_rate
         self.capacity = capacity
@@ -75,9 +125,10 @@ class StorageModel:
         self.en_in = 0  # total energy into storage (grid side)
         self.en_out = 0  # total energy out of storage (grid side)
         self.curt = 0  # total supply that could not be stored
+        self.curtarray = []
         # from optimise setting only (added by Mac)
         self.discharge = np.empty([])  # timeseries of discharge rate (grid side) MW
-        self.charge = np.empty([])  # timeseries of charge rate (grid side) M
+        self.charge = 0  # store state of charge in MWh
         self.SOC = []  # timeseries of Storage State of Charge (SOC) MWh
         self.chargetimeseries = []
 
@@ -133,6 +184,25 @@ class StorageModel:
                 self.capacity * self.fixed_cost
                 + self.en_out * self.variable_cost * 100 / (self.eff_out * self.n_years)
             )
+
+    def calculate_fixed_costs(self, lifetime, totalcapex, yearlyopex, hurdlerate):
+        """
+        == description ==
+        This function calculates the yearly fixed costs of the generation input
+
+        == parameters ==
+        lifetime: (int) lifetime of the generation unit in years
+        totalcapex: (float) total capital expenditure in GBP
+        yearlyopex: (float) yearly operational expenditure in GBP
+        hurdlerate: (float) hurdle rate for the generation unit
+        == returns ==
+        (float) cost per year in GBP
+        """
+        yearlyreturncost = (
+            hurdlerate / (1 - (1 + hurdlerate) ** -lifetime)
+        ) * totalcapex
+        fixed_cost = yearlyreturncost + yearlyopex
+        return fixed_cost
 
     def plot_timeseries(self, start=0, end=-1):
         """
@@ -337,6 +407,7 @@ class StorageModel:
         self.start_up_time = start_up_time
         self.charge = 0.0  # intialise stosrage as empty
         self.output = [0] * len(surplus)
+        self.curtarray = np.zeros(len(surplus))
         self.missed_demand = [0] * len(surplus)
         self.n_years = len(surplus) / (365.25 * 24 / t_res)
         self.energy_shortfalls = 0
@@ -459,22 +530,44 @@ class BatteryStorageModel(StorageModel):
         eff_in=95,
         eff_out=95,
         self_dis=2,
-        variable_cost=0,
-        fixed_cost=44947,
+        storageCapex=391 * 10**3,
+        storageFixedOpex=7 * 10**3,
+        storagelifetime=15,
+        storageVarOpex=0,
+        chargeCapex=0,
+        chargeFixedOpex=0,
+        chargeVarOpex=0,
+        chargeLifetime=15,
+        dischargeCapex=0,
+        dischargeFixedOpex=0,
+        dischargeVarOpex=0,
+        dischargeLifetime=15,
         max_c_rate=25,
         max_d_rate=25,
         capacity=1,
     ):
         super().__init__(
-            eff_in,
-            eff_out,
-            self_dis,
-            variable_cost,
-            fixed_cost,
-            max_c_rate,
-            max_d_rate,
-            "Li-Ion Battery",
+            eff_in=eff_in,
+            eff_out=eff_out,
+            self_dis=self_dis,
+            storageCapex=storageCapex,
+            storageFixedOpex=storageFixedOpex,
+            storagelifetime=storagelifetime,
+            storageVarOpex=storageVarOpex,
+            chargeCapex=chargeCapex,
+            chargeFixedOpex=chargeFixedOpex,
+            chargeVarOpex=chargeVarOpex,
+            chargeLifetime=chargeLifetime,
+            dischargeCapex=dischargeCapex,
+            dischargeFixedOpex=dischargeFixedOpex,
+            dischargeVarOpex=dischargeVarOpex,
+            dischargeLifetime=dischargeLifetime,
+            hurdleRate=0.08,
+            max_c_rate=max_c_rate,
+            max_d_rate=max_d_rate,
+            name="Li-Ion Battery",
             capacity=capacity,
+            limits=[0, 1000000000],
         )
 
 
@@ -484,23 +577,47 @@ class HydrogenStorageModel(StorageModel):
         eff_in=78.7,
         eff_out=50,
         self_dis=0,
-        variable_cost=8.44,
-        fixed_cost=193.9,
+        storageCapex=500,
+        storageFixedOpex=9.2,
+        storagelifetime=30,
+        storageVarOpex=2,
+        chargeCapex=730 * 10**3,
+        chargeFixedOpex=30 * 10**3,
+        chargeVarOpex=4,
+        chargeLifetime=30,
+        dischargeCapex=623 * 10**3,
+        dischargeFixedOpex=13 * 10**3,
+        dischargeVarOpex=4.0,
+        dischargeLifetime=25,
         max_c_rate=0.06,
         max_d_rate=0.12,
         capacity=1,
         initial_charge=1,
+        hurdleRate=0.1,
+        limits=[0, 1000000000],
     ):
         super().__init__(
-            eff_in,
-            eff_out,
-            self_dis,
-            variable_cost,
-            fixed_cost,
-            max_c_rate,
-            max_d_rate,
-            "Hydrogen",
+            eff_in=eff_in,
+            eff_out=eff_out,
+            self_dis=self_dis,
+            storageCapex=storageCapex,
+            storageFixedOpex=storageFixedOpex,
+            storagelifetime=storagelifetime,
+            storageVarOpex=storageVarOpex,
+            chargeCapex=chargeCapex,
+            chargeFixedOpex=chargeFixedOpex,
+            chargeVarOpex=chargeVarOpex,
+            chargeLifetime=chargeLifetime,
+            dischargeCapex=dischargeCapex,
+            dischargeFixedOpex=dischargeFixedOpex,
+            dischargeVarOpex=dischargeVarOpex,
+            dischargeLifetime=dischargeLifetime,
+            hurdleRate=hurdleRate,
+            max_c_rate=max_c_rate,
+            max_d_rate=max_d_rate,
+            name="Hydrogen Storage",
             capacity=capacity,
+            limits=limits,
             initial_charge=initial_charge,
         )
 
@@ -531,7 +648,15 @@ class ThermalStorageModel(StorageModel):
 
 
 class MultipleStorageAssets:
-    def __init__(self, assets, c_order=None, d_order=None):
+    def __init__(
+        self,
+        assets,
+        c_order=None,
+        d_order=None,
+        DispatchableAssetList=None,
+        DispatchTimeHorizon=24,
+        Interconnector=None,
+    ):
         """
         == description ==
         Initialisation of a multiple storage object. Note that if charging or
@@ -544,6 +669,8 @@ class MultipleStorageAssets:
             prioritised for charging under 'ordered' operation
         d_order: (Array<int>) a list of the order which assets should be
             prioritised for discharging under 'ordered' operation
+        DispatchableAssetList: (Array<DispatchableAsset>) a list of dispatchable assets, in merit order
+
 
         == returns ==
         None
@@ -560,7 +687,13 @@ class MultipleStorageAssets:
             []
         )  # the necessary fossil fuel generation timeseries from the last optimise run
         self.Shed = np.empty([])  # timeseries of surplus shedding
-
+        self.DispatchableAssetList = DispatchableAssetList
+        self.DispatchTimeHorizon = DispatchTimeHorizon
+        self.Interconnector = Interconnector
+        if DispatchableAssetList is not None:
+            self.DispatchEnabled = True
+        else:
+            self.DispatchEnabled = False
         if c_order is None:
             c_order = list(range(self.n_assets))
 
@@ -701,6 +834,7 @@ class MultipleStorageAssets:
         self.energy_shortfalls = 0
 
         output = [0] * len(surplus)
+        self.curtarray = np.zeros(len(surplus))
         soc = []
         for i in range(self.n_assets):
             soc.append([i])
@@ -743,9 +877,103 @@ class MultipleStorageAssets:
                         if t > start_up_time:
                             di_profiles[i]["c"][t % T] += output[t] - t_surplus
                         t_surplus = self.units[c_order[i]].output[t]
+                if self.Interconnector != None:
+                    t_surplus = self.Interconnector.export(t, t_surplus)
+                    output[t] = t_surplus
+
                 self.curt += output[t]
+                self.curtarray[t] = output[t]
 
             elif t_surplus < 0:
+                if self.DispatchEnabled:
+                    # we want to see if the energy demand over the time horizon exceeds the energy available from the storage
+                    # if it does we will need to dispatch the dispatchable asset
+
+                    if t > len(surplus) - self.DispatchTimeHorizon:
+                        lengthoftimehorizon = len(surplus) - t
+                    else:
+                        lengthoftimehorizon = self.DispatchTimeHorizon
+                    # we now need to predict the storage levels for the timehorizon. We'll simulate the storage levels for the time horizon,
+                    # and if the storage levels are zero at any point, we will dispatch the dispatchable asset
+                    storelevels = [self.units[i].charge for i in range(self.n_assets)]
+                    maxcapacity = [self.units[i].capacity for i in range(self.n_assets)]
+                    # if t > 4807 and t < 4820:
+                    #     print("_____________________")
+                    #     print(t)
+                    #     print(storelevels)
+                    #     print(maxcapacity)
+                    for hourinfutureprediction in range(lengthoftimehorizon):
+                        this_surplus = surplus[t + hourinfutureprediction]
+
+                        # if t > 4807 and t < 4820:
+                        #     print(f"Hour: {hourinfutureprediction}")
+                        #     print(f"This surplus: {this_surplus}")
+                        if this_surplus >= 0:
+                            # if t > 4807 and t < 4820:
+                            #     print("Charging")
+                            for i in range(self.n_assets):
+                                if this_surplus > 0:
+                                    # charge the stores in the order of the c_order
+                                    storelevels[c_order[i]] += (
+                                        this_surplus
+                                        * self.units[c_order[i]].eff_in
+                                        / 100
+                                    )
+
+                                    if (
+                                        storelevels[c_order[i]]
+                                        > maxcapacity[c_order[i]]
+                                    ):
+                                        # if the store is full, then only part of the surplus can be stored
+                                        this_surplus -= (
+                                            (
+                                                storelevels[c_order[i]]
+                                                - maxcapacity[c_order[i]]
+                                            )
+                                            * self.units[c_order[i]].eff_in
+                                            / 100
+                                        )
+                                        storelevels[c_order[i]] = maxcapacity[
+                                            c_order[i]
+                                        ]
+                                    else:
+                                        # if the store is not full, then the surplus is all stored
+                                        this_surplus = 0
+                        elif this_surplus < 0:
+                            # if t > 4807 and t < 4820:
+                            #     print("Discharging")
+                            for i in range(self.n_assets):
+                                if this_surplus < 0:
+                                    storelevels[d_order[i]] += (
+                                        this_surplus
+                                        * 100
+                                        / self.units[d_order[i]].eff_out
+                                    )
+                                    if storelevels[d_order[i]] < 0:
+                                        # in this case, the store has been discharged more than it can be, so we'll set it to zero. We'll then reduce the surplus
+                                        # by the amount that was discharged
+                                        this_surplus += (
+                                            storelevels[d_order[i]]
+                                            * 100
+                                            / self.units[d_order[i]].eff_out
+                                        )
+                                        storelevels[d_order[i]] = 0
+                                    else:
+                                        this_surplus = 0
+
+                        # if t > 4807 and t < 4820:
+                        #     print(f"Store levels: {storelevels}")
+                        summedstorelevels = sum(storelevels)
+                        # if t > 4807 and t < 4820:
+                        #     print(f"Summed store levels: {summedstorelevels}")
+                        # if there is any hour in the time horizon where the storage levels are zero, we want to dispatch the dispatchable asset.
+                        # we are not dispatching our future predictions, we are dispatching the current hour
+                        if summedstorelevels <= 0:
+                            for DispatchableAsset in self.DispatchableAssetList:
+                                t_surplus = DispatchableAsset.dispatch(t, t_surplus)
+                                output[t] = t_surplus
+                            break
+
                 for i in range(self.n_assets):
                     self.units[i].SOC.append(self.units[i].charge)
 
@@ -755,6 +983,7 @@ class MultipleStorageAssets:
                         if t > start_up_time:
                             di_profiles[i]["d"][t % T] += output[t] - t_surplus
                         t_surplus = self.units[d_order[i]].output[t]
+
                 if output[t] < 0:
                     if t > start_up_time:
                         shortfalls += 1
