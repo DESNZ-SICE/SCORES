@@ -964,7 +964,6 @@ class OffshoreWindModel(GenerationModel):
         self.tilt = tilt
         self.air_density = air_density
         self.rotor_diameter = rotor_diameter
-        self.rated_rotor_rpm = rated_rotor_rpm
         self.rated_wind_speed = rated_wind_speed
         self.v_cut_in = v_cut_in
         self.v_cut_out = v_cut_out
@@ -1038,14 +1037,8 @@ class OffshoreWindModel(GenerationModel):
             self.n_turbine = [1] * len(self.sites)
 
         self.total_installed_capacity = sum(self.n_turbine) * self.turbine_size
-        # tip speed ratio
-        tsr = (
-            self.rated_rotor_rpm
-            * self.rotor_diameter
-            / (2 * 9.549 * self.rated_wind_speed)
-        )
+
         area = np.pi * self.rotor_diameter * self.rotor_diameter / 4
-        b = self.tilt
         if self.power_curve is None:
             # create the power curve at intervals of 0.1
             v = np.linspace(
@@ -1664,7 +1657,6 @@ class OnshoreWindModel(GenerationModel):
         self.tilt = tilt
         self.air_density = air_density
         self.rotor_diameter = rotor_diameter
-        self.rated_rotor_rpm = rated_rotor_rpm
         self.rated_wind_speed = rated_wind_speed
         self.v_cut_in = v_cut_in
         self.v_cut_out = v_cut_out
@@ -1742,13 +1734,7 @@ class OnshoreWindModel(GenerationModel):
         self.total_installed_capacity = sum(self.n_turbine) * self.turbine_size
 
         # tip speed ratio
-        tsr = (
-            self.rated_rotor_rpm
-            * self.rotor_diameter
-            / (2 * 9.549 * self.rated_wind_speed)
-        )
         area = np.pi * self.rotor_diameter * self.rotor_diameter / 4
-        b = self.tilt
 
         # create the power curve at intervals of 0.1
         v = np.arange(0, self.v_cut_out, 0.1)  # wind speeds (m/s)
