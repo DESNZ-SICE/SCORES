@@ -10,6 +10,7 @@ import copy
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+import pandas as pd
 from fns import lambda_i, c_p, get_filename
 
 
@@ -18,20 +19,25 @@ class GenerationModel:
     def __init__(
         self,
         sites,
-        year_min,
-        year_max,
-        months,
-        capex,
-        opex,
-        variable_cost,
         name,
-        data_path,
-        save_path,
+        cost_param_entry,
+        data_path="",
+        cost_params_file=None,
+        cost_sensitivity="Medium",
+        cost_year="2025",
+        capex=None,
+        opex=None,
+        variable_cost=None,
+        additional_variable_cost=0,
+        lifetime=None,
+        hurdlerate=None,
+        year_min=2013,
+        year_max=2019,
+        months=list(range(1, 13)),
         limits=[0, 1000000],
         year_online=None,
         month_online=None,
-        lifetime=25,
-        hurdlerate=0.052,
+        save_path="stored_model_runs/",
     ):
         """
         == description ==
@@ -41,24 +47,56 @@ class GenerationModel:
 
         == parameters ==
         sites: (Array<int>) List of site indexes to be used
-        year_min: (int) earliest year in simulation
-        year_max: (int) latest year in simulation
-        months: (Array<int>) list of months to be included in the simulation
+        name: (str) name of the generation unit
+        cost_param_entry: (str) entry in the cost parameters file
+        data_path: (str) path to the data file
+        cost_params_file: (str) path to the cost parameters file. Keyword arguments can overwrite variables from the file.
+        technical_params_file: (str) path to the technical parameters file. Keyword arguments can overwrite variables from the file.
+        cost_sensitivity: (str) sensitivity of the cost parameters
+        cost_year: (str) year of the cost parameters
         capex: (float) cost per MW of installation in GBP
         opex: (float) yearly cost per MW of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
+        additional_variable_cost: (float) additional cost incurred per MWh of generation in GBP, from fuel costs or carbon prices
+        lifetime: (int) lifetime of the generation unit in years
+        hurdlerate: (float) hurdle rate for the generation unit
+        year_min: (int) earliest year in simulation
+        year_max: (int) latest year in simulation
+        months: (Array<int>) list of months to be included in the simulation
         limits: (array<float>) used for .full_optimise to define the max and min installed generation in MWh ([min,max])
         year_online: list(int) year the generation unit was installed, at each site
         month_online: list(int) month the generation unit was installed, at each site
-        lifetime: (int) lifetime of the generation unit in years
-        hurdlerate: (float) hurdle rate for the generation unit
+        save_path: (str) path to file where output will be saved
         == returns ==
         None
         """
+
+        if cost_params_file != None:
+            # Read in cost parameters
+            cost_params = pd.read_excel(
+                cost_params_file, sheet_name=cost_sensitivity, index_col=0
+            )
+            rowname = cost_param_entry + "-" + cost_year
+            datarow = cost_params.loc[rowname]
+
+            loadedcapex = datarow["Capex-£/kW"] * 1000
+            loadedopex = datarow["Fixed Opex-£/MW/yr"]
+            loadedvariable_cost = datarow["Variable Opex-£/MWh"]
+            loadedlifetime = datarow["Operating lifetime-years"]
+            loadedhurdlerate = datarow["Hurdle Rate-%"]
         self.sites = sites
         self.year_min = year_min
         self.year_max = year_max
         self.months = months
+        capex = capex if capex is not None else loadedcapex
+        opex = opex if opex is not None else loadedopex
+        variable_cost = (
+            variable_cost if variable_cost is not None else loadedvariable_cost
+        )
+        variable_cost += additional_variable_cost
+        lifetime = lifetime if lifetime is not None else loadedlifetime
+        hurdlerate = hurdlerate if hurdlerate is not None else loadedhurdlerate
+
         self.fixed_cost = self.calculate_fixed_costs(lifetime, capex, opex, hurdlerate)
         self.variable_cost = variable_cost
         self.name = name
@@ -281,18 +319,22 @@ class DispatchableGenerator(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        capex=4000000,
-        opex=50000,
+        cost_params_file="params/SCORES Cost assumptions.xlsx",
+        cost_param_entry="CCGT H Class",
+        cost_sensitivity="Medium",
+        cost_year="2025",
+        capex=None,
+        opex=None,
+        variable_opex=None,
+        lifetime=None,
+        hurdlerate=None,
         gentype="Gas",
         fuel_cost=10,
         carbon_cost=5,
-        variable_opex=2,
         year_online=None,
         month_online=None,
         capacities=[1000],
         limits=[0, 1000000],
-        lifetime=40,
-        hurdlerate=0.07,
     ):
         """
         == description ==
@@ -302,39 +344,45 @@ class DispatchableGenerator(GenerationModel):
         year_min: (int) earliest year in simulation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
+        cost_params_file: (str) path to the cost parameters file: it will be overwritten by any keyword arguments
+        cost_param_entry: (str) entry in the cost parameters file
+        cost_sensitivity: (str) sensitivity of the cost parameters
+        cost_year: (str) year of the cost parameters
         capex: (float) cost incurred per MW of installation in GBP
         opex: (float) yearly cost per MW of installation in GBP
+        variable_opex: (float) cost incurred per MWh of generation in GBP
+        lifetime: (int) lifetime of the generation unit in years
+        hurdlerate: (float) hurdle rate for the generation unit
         gentype: (str) type of generation unit: this is used to name the generator
         fuel_cost: (float) cost incurred per MWh of generation in GBP
         carbon_cost: (float) cost incurred per MWh of generation in GBP
-        variable_opex: (float) cost incurred per MWh of generation in GBP
         year_online: list(int) year the generation unit was installed, at each site
         month_online: list(int) month the generation unit was installed, at each site
         capacities: (Array <float>) installed capacity of each site in MW
         limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
-        lifetime: (int) lifetime of the generation unit in years
-        hurdlerate: (float) hurdle rate for the generation unit
         == returns ==
         None
         """
 
-        self.variable_cost = fuel_cost + carbon_cost + variable_opex
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            capex,
-            opex,
-            self.variable_cost,
             f"Dispatchable_{gentype}",
-            "",
-            "",
-            year_online=year_online,
-            month_online=month_online,
-            limits=limits,
+            cost_param_entry,
+            cost_params_file=cost_params_file,
+            cost_sensitivity=cost_sensitivity,
+            cost_year=cost_year,
+            capex=capex,
+            opex=opex,
+            variable_cost=variable_opex,
+            additional_variable_cost=fuel_cost + carbon_cost,
             lifetime=lifetime,
             hurdlerate=hurdlerate,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            limits=limits,
+            year_online=year_online,
+            month_online=month_online,
         )
         self.total_installed_capacity = sum(capacities)
 
@@ -375,11 +423,13 @@ class Interconnector(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
+        cost_params_file=None,
+        cost_param_entry=None,
+        cost_sensitivity="Medium",
+        cost_year="2025",
         capex=4000000,
         opex=50000,
         gentype="Interconnector",
-        fuel_cost=10,
-        carbon_cost=5,
         variable_opex=2,
         year_online=None,
         month_online=None,
@@ -412,23 +462,25 @@ class Interconnector(GenerationModel):
         None
         """
 
-        self.variable_cost = fuel_cost + carbon_cost + variable_opex
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            capex,
-            opex,
-            self.variable_cost,
             f"Dispatchable_{gentype}",
-            "",
-            "",
-            year_online=year_online,
-            month_online=month_online,
-            limits=limits,
+            cost_param_entry,
+            cost_params_file=cost_params_file,
+            cost_sensitivity=cost_sensitivity,
+            cost_year=cost_year,
+            capex=capex,
+            opex=opex,
+            variable_cost=variable_opex,
             lifetime=lifetime,
             hurdlerate=hurdlerate,
+            year_min=year_min,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            limits=limits,
+            year_online=year_online,
+            month_online=month_online,
         )
         self.total_installed_capacity = sum(capacities)
         self.total_exported = 0
@@ -592,18 +644,20 @@ class GeothermalModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
+        cost_params_file=None,
+        cost_param_entry=None,
+        cost_sensitivity="Medium",
+        cost_year="2025",
         capex=2000000,
         opex=2000000 * 0.05,
         variable_cost=0,
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
+        lifetime=40,
+        hurdlerate=0.1,
+        gentype="Geothermal",
         year_online=None,
         month_online=None,
         capacities=[1000],
         limits=[0, 1000000],
-        lifetime=40,
-        hurdlerate=0.1,
         loadfactor=0.90,
     ):
         """
@@ -615,16 +669,21 @@ class GeothermalModel(GenerationModel):
         year_min: (int) earliest year in simlation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
-        fixed_cost: (float) cost incurred per MW of installation in GBP
+        cost_params_file: (str) path to the cost parameters file: it will be overwritten by any keyword arguments
+        cost_param_entry: (str) entry in the cost parameters file
+        cost_sensitivity: (str) sensitivity of the cost parameters
+        cost_year: (str) year of the cost parameters
+        capex: (float) cost incurred per MW of installation in GBP
+        opex: (float) yearly cost per MW of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
-        data_path: (str) path to file containing raw data
-        save_path: (str) path to file where output will be saved
-        save: (boo) determines whether to save the results of the run
-        capacity: (Array <float>) installed capacity of each site in MW
-        limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
         lifetime: (int) lifetime of the generation unit in years
-        hurdlerate: (float) hurdle rate for the generation unit (between 0 and 1)
-        loadfactor: (float) load factor of the generation unit, between 0 and 1
+        hurdlerate: (float) hurdle rate for the generation unit
+        gentype: (str) type of generation unit: this is used to name the generator
+        year_online: list(int) year the generation unit was installed, at each site
+        month_online: list(int) month the generation unit was installed, at each site
+        capacities: (Array <float>) installed capacity of each site in MW
+        limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
+        loadfactor: (float) load factor of the generation unit
         == returns ==
         None
         """
@@ -636,20 +695,22 @@ class GeothermalModel(GenerationModel):
 
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            capex,
-            opex,
-            variable_cost,
             "Geothermal",
-            data_path,
-            save_path,
-            year_online=year_online,
-            month_online=month_online,
-            limits=limits,
+            cost_param_entry,
+            cost_params_file=cost_params_file,
+            cost_sensitivity=cost_sensitivity,
+            cost_year=cost_year,
+            capex=capex,
+            opex=opex,
+            variable_cost=variable_cost,
             lifetime=lifetime,
             hurdlerate=hurdlerate,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            limits=limits,
+            year_online=year_online,
+            month_online=month_online,
         )
         self.power_out = np.array(self.power_out)
         self.total_installed_capacity = sum(capacities)
@@ -733,14 +794,15 @@ class TidalStreamTurbineModel(GenerationModel):
         """
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            fixed_cost,
-            variable_cost,
             "Tidal Stream",
-            data_path,
-            save_path,
+            "",
+            data_path=data_path,
+            year_min=year_min,
+            year_max=year_max,
+            fixed_cost=fixed_cost,
+            variable_cost=variable_cost,
+            months=months,
+            limits=[0, 1000000],
         )
 
         self.water_density = water_density
@@ -879,33 +941,37 @@ class OffshoreWindModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        capex=1810000,
-        opex=88.6 * 1000,
-        variable_cost=1,
-        tilt=5,
+        turbine_size=10,
+        cost_params_file="params/SCORES Cost assumptions.xlsx",
+        cost_param_entry="Offshore Wind",
+        technical_params_file="params/Offshore_wind_params.xlsx",
+        cost_sensitivity="Medium",
+        cost_year="2025",
+        capex=None,
+        opex=None,
+        variable_cost=None,
+        lifetime=None,
+        hurdlerate=None,
         air_density=1.23,
-        rotor_diameter=164,
-        rated_rotor_rpm=7,
-        rated_wind_speed=11,
-        v_cut_in=3,
-        v_cut_out=25,
+        rotor_diameter=None,
+        rated_wind_speed=None,
+        v_cut_in=None,
+        v_cut_out=None,
         n_turbine=None,
-        turbine_size=9.5,
+        turbine_scale=False,
+        hub_height=None,
         data_path="",
-        hub_height=122,
-        data_height=100,
-        alpha=0.143,  # this line added by CQ
         save_path="stored_model_runs/",
         save=True,
+        data_height=100,
+        alpha=0.143,  # this row added by CQ to calculate wind shear
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
         limits=[0, 1000000],
-        power_curve=None,
-        lifetime=30,
-        hurdlerate=0.052,
         scaling_factor=1,
-    ):
+    ):  # this added by CQ so that a power curve can optionally be imported
         """
         == description ==
         Initialises an OffshoreWindModel object. Searches for a saved result at
@@ -918,8 +984,11 @@ class OffshoreWindModel(GenerationModel):
         year_min: (int) earliest year in sumlation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
-        Capex: (float) cost incurred per MW of installation in GBP
-        opex: (float) yearly cost per MW of installation in GBP
+        cost_params_file: (str) path to file containing cost assumptions: parameters entered as keyword arguments will override these
+        technical_params_file: (str) path to file containing technical assumptions: parameters entered as keyword arguments will override these
+        cost_sensitivity: (str) sensitivity of cost assumptions
+        cost_year: (str) year to which costs are normalised
+        fixed_cost: (float) cost incurred per MW of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
         tilt: (float) blade tilt in degrees
         air_density: (float) density of air in kg/m3
@@ -930,46 +999,66 @@ class OffshoreWindModel(GenerationModel):
         v_cut_out: (float) cut out wind speed in m/s
         n_turbine: (Array<int>) number of turbines installed at each site
         turbine_size: (float) size of each turbine in MW
+        hub_height: (float) hub height in m
         data_path: (str) path to file containing raw data
         save_path: (str) path to file where output will be saved
-        save: (bool) determines whether to save the results of the run
-        year_online: list(int) year the generation unit was installed, at each site
-        month_online: list(int) month the generation unit was installed, at each site
-        force_run: (bool) determines whether to rerun the model
-        limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
-        power_curve: (Array<float>) power curve for the turbine
+        save: (boo) determines whether to save the results of the run
+        alpha: (float) wind shear coefficient
+        power_curve: (Array<float>) optional power curve - power outputs that correspond to v array spaced at 0.1m/s
         == returns ==
         None
         """
-        self.startdate = datetime.datetime(year_min, months[0], 1)
-        self.enddate = datetime.datetime(year_max + 1, months[0], 1)
+
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            capex,
-            opex,
-            variable_cost,
             "Offshore Wind",
-            data_path,
-            save_path,
+            cost_param_entry,
+            data_path=data_path,
+            cost_params_file=cost_params_file,
+            cost_sensitivity=cost_sensitivity,
+            cost_year=cost_year,
+            capex=capex,
+            opex=opex,
+            variable_cost=variable_cost,
+            lifetime=lifetime,
+            hurdlerate=hurdlerate,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            limits=limits,
             year_online=year_online,
             month_online=month_online,
-            limits=limits,
-            hurdlerate=hurdlerate,
-            lifetime=lifetime,
+            save_path=save_path,
         )
-
-        self.tilt = tilt
+        # If no values given assume an equl distribution of turbines over sites
         self.air_density = air_density
-        self.rotor_diameter = rotor_diameter
-        self.rated_wind_speed = rated_wind_speed
-        self.v_cut_in = v_cut_in
-        self.v_cut_out = v_cut_out
+        if technical_params_file != None:
+            technicalparameters = pd.read_excel(technical_params_file, index_col=0)
+            try:
+                parameterrow = technicalparameters.loc[turbine_size]
+            except KeyError:
+                raise Exception(
+                    "Turbine size not found in technical parameters file. Either add it or enter the parameters manually"
+                )
+
+            loadedrotor_diameter = parameterrow["Rotor Diameter (m)"]
+            loadedv_cut_in = parameterrow["Cut in speed"]
+            loadedrated_wind_speed = parameterrow["Rated wind speed"]
+            loadedv_cut_out = parameterrow["Cut out speed"]
+            loadedhub_height = parameterrow["Hub height (m)"]
+
+        self.rotor_diameter = (
+            rotor_diameter if rotor_diameter != None else loadedrotor_diameter
+        )
+        self.rated_wind_speed = (
+            rated_wind_speed if rated_wind_speed != None else loadedrated_wind_speed
+        )
+        self.v_cut_in = v_cut_in if v_cut_in != None else loadedv_cut_in
+        self.v_cut_out = v_cut_out if v_cut_out != None else loadedv_cut_out
         self.n_turbine = n_turbine
         self.turbine_size = turbine_size
-        self.hub_height = hub_height  # added by CQ
+        self.hub_height = hub_height if hub_height != None else loadedhub_height
+
         self.data_height = data_height  # added by CQ
         self.alpha = alpha  # added by CQ
         self.power_curve = power_curve
@@ -1180,9 +1269,15 @@ class SolarModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        capex=450000,
-        opex=9300,
-        variable_cost=0,
+        cost_params_file="params/SCORES Cost assumptions.xlsx",
+        cost_param_entry="Large-scale Solar",
+        cost_sensitivity="Medium",
+        cost_year="2025",
+        capex=None,
+        opex=None,
+        variable_cost=None,
+        lifetime=None,
+        hurdlerate=None,
         orient=0,
         tilt=22,
         efficiency=0.17,
@@ -1196,8 +1291,6 @@ class SolarModel(GenerationModel):
         month_online=None,
         limits=[0, 1000000],
         force_run=False,
-        hurdlerate=0.05,
-        lifetime=35,
     ):
         """
         == description ==
@@ -1228,20 +1321,24 @@ class SolarModel(GenerationModel):
         """
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            capex,
-            opex,
-            variable_cost,
             "Solar",
-            data_path,
-            save_path,
+            cost_param_entry,
+            data_path=data_path,
+            cost_params_file=cost_params_file,
+            cost_sensitivity=cost_sensitivity,
+            cost_year=cost_year,
+            capex=capex,
+            opex=opex,
+            variable_cost=variable_cost,
+            lifetime=lifetime,
+            hurdlerate=hurdlerate,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            limits=limits,
             year_online=year_online,
             month_online=month_online,
-            limits=limits,
-            hurdlerate=hurdlerate,
-            lifetime=lifetime,
+            save_path=save_path,
         )
 
         self.orient = np.deg2rad(orient)  # deg -> rad
@@ -1576,19 +1673,25 @@ class OnshoreWindModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        capex=1230000,
-        opex=30.8 * 1000,
-        variable_cost=6,
-        tilt=5,
+        turbine_size=3.5,
+        cost_params_file="params/SCORES Cost assumptions.xlsx",
+        cost_param_entry="Onshore Wind",
+        technical_params_file="params/Offshore_wind_params.xlsx",
+        cost_sensitivity="Medium",
+        cost_year="2025",
+        capex=None,
+        opex=None,
+        variable_cost=None,
+        lifetime=None,
+        hurdlerate=None,
         air_density=1.23,
-        rotor_diameter=120,
-        rated_rotor_rpm=13,
-        rated_wind_speed=12.5,
-        v_cut_in=3,
-        v_cut_out=25,
+        rotor_diameter=None,
+        rated_wind_speed=None,
+        v_cut_in=None,
+        v_cut_out=None,
         n_turbine=None,
-        turbine_size=3.6,
-        hub_height=90,
+        turbine_scale=False,
+        hub_height=None,
         data_path="",
         save_path="stored_model_runs/",
         save=True,
@@ -1599,8 +1702,6 @@ class OnshoreWindModel(GenerationModel):
         month_online=None,
         force_run=False,
         limits=[0, 1000000],
-        lifetime=25,
-        hurdlerate=0.052,
         scaling_factor=1,
     ):  # this added by CQ so that a power curve can optionally be imported
         """
@@ -1615,6 +1716,10 @@ class OnshoreWindModel(GenerationModel):
         year_min: (int) earliest year in sumlation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
+        cost_params_file: (str) path to file containing cost assumptions: parameters entered as keyword arguments will override these
+        technical_params_file: (str) path to file containing technical assumptions: parameters entered as keyword arguments will override these
+        cost_sensitivity: (str) sensitivity of cost assumptions
+        cost_year: (str) year to which costs are normalised
         fixed_cost: (float) cost incurred per MW of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
         tilt: (float) blade tilt in degrees
@@ -1636,33 +1741,57 @@ class OnshoreWindModel(GenerationModel):
         == returns ==
         None
         """
+
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            capex,
-            opex,
-            variable_cost,
             "Onshore Wind",
-            data_path,
-            save_path,
+            cost_param_entry,
+            data_path=data_path,
+            cost_params_file=cost_params_file,
+            cost_sensitivity=cost_sensitivity,
+            cost_year=cost_year,
+            capex=capex,
+            opex=opex,
+            variable_cost=variable_cost,
+            lifetime=lifetime,
+            hurdlerate=hurdlerate,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            limits=limits,
             year_online=year_online,
             month_online=month_online,
-            limits=limits,
-            hurdlerate=hurdlerate,
-            lifetime=lifetime,
+            save_path=save_path,
         )
         # If no values given assume an equl distribution of turbines over sites
-        self.tilt = tilt
         self.air_density = air_density
-        self.rotor_diameter = rotor_diameter
-        self.rated_wind_speed = rated_wind_speed
-        self.v_cut_in = v_cut_in
-        self.v_cut_out = v_cut_out
+        if technical_params_file != None:
+            technicalparameters = pd.read_excel(technical_params_file, index_col=0)
+            try:
+                parameterrow = technicalparameters.loc[turbine_size]
+            except KeyError:
+                raise Exception(
+                    "Turbine size not found in technical parameters file. Either add it or enter the parameters manually"
+                )
+
+            loadedrotor_diameter = parameterrow["Rotor Diameter (m)"]
+            loadedv_cut_in = parameterrow["Cut in speed"]
+            loadedrated_wind_speed = parameterrow["Rated wind speed"]
+            loadedv_cut_out = parameterrow["Cut out speed"]
+            loadedhub_height = parameterrow["Hub height (m)"]
+
+        self.rotor_diameter = (
+            rotor_diameter if rotor_diameter != None else loadedrotor_diameter
+        )
+        self.rated_wind_speed = (
+            rated_wind_speed if rated_wind_speed != None else loadedrated_wind_speed
+        )
+        self.v_cut_in = v_cut_in if v_cut_in != None else loadedv_cut_in
+        self.v_cut_out = v_cut_out if v_cut_out != None else loadedv_cut_out
         self.n_turbine = n_turbine
         self.turbine_size = turbine_size
-        self.hub_height = hub_height
+        self.hub_height = hub_height if hub_height != None else loadedhub_height
+
         self.data_height = data_height  # added by CQ
         self.alpha = alpha  # added by CQ
         self.power_curve = power_curve
