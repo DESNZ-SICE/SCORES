@@ -80,8 +80,8 @@ class GenerationModel:
             datarow = cost_params.loc[rowname]
 
             loadedcapex = datarow["Capex-£/kW"] * 1000
-            loadedopex = datarow["Fixed Opex-£/MW/yr"]
-            loadedvariable_cost = datarow["Variable Opex-£/MWh"]
+            loadedopex = datarow["Fixed Opex-£/MW/year"]
+            loadedvariable_cost = datarow["Variable O&M-£/MWh"]
             loadedlifetime = datarow["Operating lifetime-years"]
             loadedhurdlerate = datarow["Hurdle Rate-%"]
         self.sites = sites
@@ -474,7 +474,6 @@ class Interconnector(GenerationModel):
             variable_cost=variable_opex,
             lifetime=lifetime,
             hurdlerate=hurdlerate,
-            year_min=year_min,
             year_min=year_min,
             year_max=year_max,
             months=months,
