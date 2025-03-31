@@ -1038,7 +1038,7 @@ class OffshoreWindModel(GenerationModel):
                 parameterrow = technicalparameters.loc[turbine_size]
             except KeyError:
                 raise Exception(
-                    "Turbine size not found in technical parameters file. Either add it or enter the parameters manually"
+                    "Turbine size not found in technical parameters file. Either add it or enter the parameters manually and set technical_params_file=None"
                 )
 
             loadedrotor_diameter = parameterrow["Rotor Diameter (m)"]
@@ -1771,7 +1771,7 @@ class OnshoreWindModel(GenerationModel):
                 parameterrow = technicalparameters.loc[turbine_size]
             except KeyError:
                 raise Exception(
-                    "Turbine size not found in technical parameters file. Either add it or enter the parameters manually"
+                    "Turbine size not found in technical parameters file. Either add it or enter the parameters manually and set technical_params_file=None"
                 )
 
             loadedrotor_diameter = parameterrow["Rotor Diameter (m)"]
