@@ -73,11 +73,9 @@ class GenerationModel:
 
         if cost_params_file != None:
             # Read in cost parameters
-            cost_params = pd.read_excel(
-                cost_params_file, sheet_name=cost_sensitivity, index_col=0
-            )
-            rowname = cost_param_entry + "-" + cost_year
-            datarow = cost_params.loc[rowname]
+            cost_params = pd.read_excel(cost_params_file, sheet_name=cost_sensitivity)
+            cost_params = cost_params.set_index(["Technology", "Year"])
+            datarow = cost_params.loc[[cost_param_entry, cost_year]]
 
             loadedcapex = datarow["Capex-£/kW"] * 1000
             loadedopex = datarow["Fixed Opex-£/MW/year"]
