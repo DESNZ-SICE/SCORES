@@ -10,6 +10,7 @@ import copy
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+import pandas as pd
 from fns import lambda_i, c_p, get_filename
 
 
@@ -18,20 +19,25 @@ class GenerationModel:
     def __init__(
         self,
         sites,
-        year_min,
-        year_max,
-        months,
-        capex,
-        opex,
-        variable_cost,
         name,
-        data_path,
-        save_path,
+        cost_param_entry,
+        data_path="",
+        cost_params_file=None,
+        cost_sensitivity="Medium",
+        cost_year="2025",
+        capex=None,
+        opex=None,
+        variable_cost=None,
+        additional_variable_cost=0,
+        lifetime=None,
+        hurdlerate=None,
+        year_min=2013,
+        year_max=2019,
+        months=list(range(1, 13)),
         limits=[0, 1000000],
         year_online=None,
         month_online=None,
-        lifetime=25,
-        hurdlerate=0.052,
+        save_path="stored_model_runs/",
     ):
         """
         == description ==
@@ -41,24 +47,56 @@ class GenerationModel:
 
         == parameters ==
         sites: (Array<int>) List of site indexes to be used
-        year_min: (int) earliest year in simulation
-        year_max: (int) latest year in simulation
-        months: (Array<int>) list of months to be included in the simulation
+        name: (str) name of the generation unit
+        cost_param_entry: (str) entry in the cost parameters file
+        data_path: (str) path to the data file
+        cost_params_file: (str) path to the cost parameters file. Keyword arguments can overwrite variables from the file.
+        technical_params_file: (str) path to the technical parameters file. Keyword arguments can overwrite variables from the file.
+        cost_sensitivity: (str) sensitivity of the cost parameters
+        cost_year: (str) year of the cost parameters
         capex: (float) cost per MW of installation in GBP
         opex: (float) yearly cost per MW of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
+        additional_variable_cost: (float) additional cost incurred per MWh of generation in GBP, from fuel costs or carbon prices
+        lifetime: (int) lifetime of the generation unit in years
+        hurdlerate: (float) hurdle rate for the generation unit
+        year_min: (int) earliest year in simulation
+        year_max: (int) latest year in simulation
+        months: (Array<int>) list of months to be included in the simulation
         limits: (array<float>) used for .full_optimise to define the max and min installed generation in MWh ([min,max])
         year_online: list(int) year the generation unit was installed, at each site
         month_online: list(int) month the generation unit was installed, at each site
-        lifetime: (int) lifetime of the generation unit in years
-        hurdlerate: (float) hurdle rate for the generation unit
+        save_path: (str) path to file where output will be saved
         == returns ==
         None
         """
+
+        if cost_params_file != None:
+            # Read in cost parameters
+            cost_params = pd.read_excel(
+                cost_params_file, sheet_name=cost_sensitivity, index_col=0
+            )
+            rowname = cost_param_entry + "-" + cost_year
+            datarow = cost_params.loc[rowname]
+
+            loadedcapex = datarow["Capex-£/kW"] * 1000
+            loadedopex = datarow["Fixed Opex-£/MW/year"]
+            loadedvariable_cost = datarow["Variable O&M-£/MWh"]
+            loadedlifetime = datarow["Operating lifetime-years"]
+            loadedhurdlerate = datarow["Hurdle Rate-%"]
         self.sites = sites
         self.year_min = year_min
         self.year_max = year_max
         self.months = months
+        capex = capex if capex is not None else loadedcapex
+        opex = opex if opex is not None else loadedopex
+        variable_cost = (
+            variable_cost if variable_cost is not None else loadedvariable_cost
+        )
+        variable_cost += additional_variable_cost
+        lifetime = lifetime if lifetime is not None else loadedlifetime
+        hurdlerate = hurdlerate if hurdlerate is not None else loadedhurdlerate
+
         self.fixed_cost = self.calculate_fixed_costs(lifetime, capex, opex, hurdlerate)
         self.variable_cost = variable_cost
         self.name = name
@@ -281,18 +319,22 @@ class DispatchableGenerator(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        capex=4000000,
-        opex=50000,
+        cost_params_file="params/SCORES Cost assumptions.xlsx",
+        cost_param_entry="CCGT H Class",
+        cost_sensitivity="Medium",
+        cost_year="2025",
+        capex=None,
+        opex=None,
+        variable_opex=None,
+        lifetime=None,
+        hurdlerate=None,
         gentype="Gas",
         fuel_cost=10,
         carbon_cost=5,
-        variable_opex=2,
         year_online=None,
         month_online=None,
         capacities=[1000],
         limits=[0, 1000000],
-        lifetime=40,
-        hurdlerate=0.07,
     ):
         """
         == description ==
@@ -302,39 +344,45 @@ class DispatchableGenerator(GenerationModel):
         year_min: (int) earliest year in simulation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
+        cost_params_file: (str) path to the cost parameters file: it will be overwritten by any keyword arguments
+        cost_param_entry: (str) entry in the cost parameters file
+        cost_sensitivity: (str) sensitivity of the cost parameters
+        cost_year: (str) year of the cost parameters
         capex: (float) cost incurred per MW of installation in GBP
         opex: (float) yearly cost per MW of installation in GBP
+        variable_opex: (float) cost incurred per MWh of generation in GBP
+        lifetime: (int) lifetime of the generation unit in years
+        hurdlerate: (float) hurdle rate for the generation unit
         gentype: (str) type of generation unit: this is used to name the generator
         fuel_cost: (float) cost incurred per MWh of generation in GBP
         carbon_cost: (float) cost incurred per MWh of generation in GBP
-        variable_opex: (float) cost incurred per MWh of generation in GBP
         year_online: list(int) year the generation unit was installed, at each site
         month_online: list(int) month the generation unit was installed, at each site
         capacities: (Array <float>) installed capacity of each site in MW
         limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
-        lifetime: (int) lifetime of the generation unit in years
-        hurdlerate: (float) hurdle rate for the generation unit
         == returns ==
         None
         """
 
-        self.variable_cost = fuel_cost + carbon_cost + variable_opex
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            capex,
-            opex,
-            self.variable_cost,
             f"Dispatchable_{gentype}",
-            "",
-            "",
-            year_online=year_online,
-            month_online=month_online,
-            limits=limits,
+            cost_param_entry,
+            cost_params_file=cost_params_file,
+            cost_sensitivity=cost_sensitivity,
+            cost_year=cost_year,
+            capex=capex,
+            opex=opex,
+            variable_cost=variable_opex,
+            additional_variable_cost=fuel_cost + carbon_cost,
             lifetime=lifetime,
             hurdlerate=hurdlerate,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            limits=limits,
+            year_online=year_online,
+            month_online=month_online,
         )
         self.total_installed_capacity = sum(capacities)
 
@@ -375,11 +423,13 @@ class Interconnector(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
+        cost_params_file=None,
+        cost_param_entry=None,
+        cost_sensitivity="Medium",
+        cost_year="2025",
         capex=4000000,
         opex=50000,
         gentype="Interconnector",
-        fuel_cost=10,
-        carbon_cost=5,
         variable_opex=2,
         year_online=None,
         month_online=None,
@@ -412,23 +462,24 @@ class Interconnector(GenerationModel):
         None
         """
 
-        self.variable_cost = fuel_cost + carbon_cost + variable_opex
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            capex,
-            opex,
-            self.variable_cost,
             f"Dispatchable_{gentype}",
-            "",
-            "",
-            year_online=year_online,
-            month_online=month_online,
-            limits=limits,
+            cost_param_entry,
+            cost_params_file=cost_params_file,
+            cost_sensitivity=cost_sensitivity,
+            cost_year=cost_year,
+            capex=capex,
+            opex=opex,
+            variable_cost=variable_opex,
             lifetime=lifetime,
             hurdlerate=hurdlerate,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            limits=limits,
+            year_online=year_online,
+            month_online=month_online,
         )
         self.total_installed_capacity = sum(capacities)
         self.total_exported = 0
@@ -494,6 +545,10 @@ class NuclearModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
+        cost_params_file=None,
+        cost_param_entry=None,
+        cost_sensitivity="Medium",
+        cost_year="2025",
         capex=4000000,
         opex=50000,
         variable_cost=2,
@@ -543,20 +598,22 @@ class NuclearModel(GenerationModel):
 
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            capex,
-            opex,
-            variable_cost,
             "Nuclear",
-            data_path,
-            save_path,
-            year_online=year_online,
-            month_online=month_online,
-            limits=limits,
+            cost_param_entry,
+            cost_params_file=cost_params_file,
+            cost_sensitivity=cost_sensitivity,
+            cost_year="2025",
+            capex=capex,
+            opex=opex,
+            variable_cost=variable_cost,
             lifetime=lifetime,
             hurdlerate=hurdlerate,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            limits=limits,
+            year_online=year_online,
+            month_online=month_online,
         )
         self.power_out = np.array(self.power_out)
         self.total_installed_capacity = sum(capacities)
@@ -592,18 +649,20 @@ class GeothermalModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
+        cost_params_file=None,
+        cost_param_entry=None,
+        cost_sensitivity="Medium",
+        cost_year="2025",
         capex=2000000,
         opex=2000000 * 0.05,
         variable_cost=0,
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
+        lifetime=40,
+        hurdlerate=0.1,
+        gentype="Geothermal",
         year_online=None,
         month_online=None,
         capacities=[1000],
         limits=[0, 1000000],
-        lifetime=40,
-        hurdlerate=0.1,
         loadfactor=0.90,
     ):
         """
@@ -615,16 +674,21 @@ class GeothermalModel(GenerationModel):
         year_min: (int) earliest year in simlation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
-        fixed_cost: (float) cost incurred per MW of installation in GBP
+        cost_params_file: (str) path to the cost parameters file: it will be overwritten by any keyword arguments
+        cost_param_entry: (str) entry in the cost parameters file
+        cost_sensitivity: (str) sensitivity of the cost parameters
+        cost_year: (str) year of the cost parameters
+        capex: (float) cost incurred per MW of installation in GBP
+        opex: (float) yearly cost per MW of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
-        data_path: (str) path to file containing raw data
-        save_path: (str) path to file where output will be saved
-        save: (boo) determines whether to save the results of the run
-        capacity: (Array <float>) installed capacity of each site in MW
-        limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
         lifetime: (int) lifetime of the generation unit in years
-        hurdlerate: (float) hurdle rate for the generation unit (between 0 and 1)
-        loadfactor: (float) load factor of the generation unit, between 0 and 1
+        hurdlerate: (float) hurdle rate for the generation unit
+        gentype: (str) type of generation unit: this is used to name the generator
+        year_online: list(int) year the generation unit was installed, at each site
+        month_online: list(int) month the generation unit was installed, at each site
+        capacities: (Array <float>) installed capacity of each site in MW
+        limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
+        loadfactor: (float) load factor of the generation unit
         == returns ==
         None
         """
@@ -636,20 +700,22 @@ class GeothermalModel(GenerationModel):
 
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            capex,
-            opex,
-            variable_cost,
             "Geothermal",
-            data_path,
-            save_path,
-            year_online=year_online,
-            month_online=month_online,
-            limits=limits,
+            cost_param_entry,
+            cost_params_file=cost_params_file,
+            cost_sensitivity=cost_sensitivity,
+            cost_year=cost_year,
+            capex=capex,
+            opex=opex,
+            variable_cost=variable_cost,
             lifetime=lifetime,
             hurdlerate=hurdlerate,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            limits=limits,
+            year_online=year_online,
+            month_online=month_online,
         )
         self.power_out = np.array(self.power_out)
         self.total_installed_capacity = sum(capacities)
@@ -733,14 +799,15 @@ class TidalStreamTurbineModel(GenerationModel):
         """
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            fixed_cost,
-            variable_cost,
             "Tidal Stream",
-            data_path,
-            save_path,
+            "",
+            data_path=data_path,
+            year_min=year_min,
+            year_max=year_max,
+            fixed_cost=fixed_cost,
+            variable_cost=variable_cost,
+            months=months,
+            limits=[0, 1000000],
         )
 
         self.water_density = water_density
@@ -879,33 +946,37 @@ class OffshoreWindModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        capex=1810000,
-        opex=88.6 * 1000,
-        variable_cost=1,
-        tilt=5,
+        turbine_size=10,
+        cost_params_file="params/SCORES Cost assumptions.xlsx",
+        cost_param_entry="Offshore Wind",
+        technical_params_file="params/Offshore_wind_params.xlsx",
+        cost_sensitivity="Medium",
+        cost_year="2025",
+        capex=None,
+        opex=None,
+        variable_cost=None,
+        lifetime=None,
+        hurdlerate=None,
         air_density=1.23,
-        rotor_diameter=164,
-        rated_rotor_rpm=7,
-        rated_wind_speed=11,
-        v_cut_in=3,
-        v_cut_out=25,
+        rotor_diameter=None,
+        rated_wind_speed=None,
+        v_cut_in=None,
+        v_cut_out=None,
         n_turbine=None,
-        turbine_size=9.5,
+        turbine_scale=False,
+        hub_height=None,
         data_path="",
-        hub_height=122,
-        data_height=100,
-        alpha=0.143,  # this line added by CQ
         save_path="stored_model_runs/",
         save=True,
+        data_height=100,
+        alpha=0.143,  # this row added by CQ to calculate wind shear
+        power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
         limits=[0, 1000000],
-        power_curve=None,
-        lifetime=30,
-        hurdlerate=0.052,
         scaling_factor=1,
-    ):
+    ):  # this added by CQ so that a power curve can optionally be imported
         """
         == description ==
         Initialises an OffshoreWindModel object. Searches for a saved result at
@@ -918,8 +989,11 @@ class OffshoreWindModel(GenerationModel):
         year_min: (int) earliest year in sumlation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
-        Capex: (float) cost incurred per MW of installation in GBP
-        opex: (float) yearly cost per MW of installation in GBP
+        cost_params_file: (str) path to file containing cost assumptions: parameters entered as keyword arguments will override these
+        technical_params_file: (str) path to file containing technical assumptions: parameters entered as keyword arguments will override these
+        cost_sensitivity: (str) sensitivity of cost assumptions
+        cost_year: (str) year to which costs are normalised
+        fixed_cost: (float) cost incurred per MW of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
         tilt: (float) blade tilt in degrees
         air_density: (float) density of air in kg/m3
@@ -930,47 +1004,66 @@ class OffshoreWindModel(GenerationModel):
         v_cut_out: (float) cut out wind speed in m/s
         n_turbine: (Array<int>) number of turbines installed at each site
         turbine_size: (float) size of each turbine in MW
+        hub_height: (float) hub height in m
         data_path: (str) path to file containing raw data
         save_path: (str) path to file where output will be saved
-        save: (bool) determines whether to save the results of the run
-        year_online: list(int) year the generation unit was installed, at each site
-        month_online: list(int) month the generation unit was installed, at each site
-        force_run: (bool) determines whether to rerun the model
-        limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
-        power_curve: (Array<float>) power curve for the turbine
+        save: (boo) determines whether to save the results of the run
+        alpha: (float) wind shear coefficient
+        power_curve: (Array<float>) optional power curve - power outputs that correspond to v array spaced at 0.1m/s
         == returns ==
         None
         """
-        self.startdate = datetime.datetime(year_min, months[0], 1)
-        self.enddate = datetime.datetime(year_max + 1, months[0], 1)
+
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            capex,
-            opex,
-            variable_cost,
             "Offshore Wind",
-            data_path,
-            save_path,
+            cost_param_entry,
+            data_path=data_path,
+            cost_params_file=cost_params_file,
+            cost_sensitivity=cost_sensitivity,
+            cost_year=cost_year,
+            capex=capex,
+            opex=opex,
+            variable_cost=variable_cost,
+            lifetime=lifetime,
+            hurdlerate=hurdlerate,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            limits=limits,
             year_online=year_online,
             month_online=month_online,
-            limits=limits,
-            hurdlerate=hurdlerate,
-            lifetime=lifetime,
+            save_path=save_path,
         )
-
-        self.tilt = tilt
+        # If no values given assume an equl distribution of turbines over sites
         self.air_density = air_density
-        self.rotor_diameter = rotor_diameter
-        self.rated_rotor_rpm = rated_rotor_rpm
-        self.rated_wind_speed = rated_wind_speed
-        self.v_cut_in = v_cut_in
-        self.v_cut_out = v_cut_out
+        if technical_params_file != None:
+            technicalparameters = pd.read_excel(technical_params_file, index_col=0)
+            try:
+                parameterrow = technicalparameters.loc[turbine_size]
+            except KeyError:
+                raise Exception(
+                    "Turbine size not found in technical parameters file. Either add it or enter the parameters manually and set technical_params_file=None"
+                )
+
+            loadedrotor_diameter = parameterrow["Rotor Diameter (m)"]
+            loadedv_cut_in = parameterrow["Cut in speed"]
+            loadedrated_wind_speed = parameterrow["Rated wind speed"]
+            loadedv_cut_out = parameterrow["Cut out speed"]
+            loadedhub_height = parameterrow["Hub height (m)"]
+
+        self.rotor_diameter = (
+            rotor_diameter if rotor_diameter != None else loadedrotor_diameter
+        )
+        self.rated_wind_speed = (
+            rated_wind_speed if rated_wind_speed != None else loadedrated_wind_speed
+        )
+        self.v_cut_in = v_cut_in if v_cut_in != None else loadedv_cut_in
+        self.v_cut_out = v_cut_out if v_cut_out != None else loadedv_cut_out
         self.n_turbine = n_turbine
         self.turbine_size = turbine_size
-        self.hub_height = hub_height  # added by CQ
+        self.hub_height = hub_height if hub_height != None else loadedhub_height
+
         self.data_height = data_height  # added by CQ
         self.alpha = alpha  # added by CQ
         self.power_curve = power_curve
@@ -1038,14 +1131,8 @@ class OffshoreWindModel(GenerationModel):
             self.n_turbine = [1] * len(self.sites)
 
         self.total_installed_capacity = sum(self.n_turbine) * self.turbine_size
-        # tip speed ratio
-        tsr = (
-            self.rated_rotor_rpm
-            * self.rotor_diameter
-            / (2 * 9.549 * self.rated_wind_speed)
-        )
+
         area = np.pi * self.rotor_diameter * self.rotor_diameter / 4
-        b = self.tilt
         if self.power_curve is None:
             # create the power curve at intervals of 0.1
             v = np.linspace(
@@ -1187,9 +1274,15 @@ class SolarModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        capex=450000,
-        opex=9300,
-        variable_cost=0,
+        cost_params_file="params/SCORES Cost assumptions.xlsx",
+        cost_param_entry="Large-scale Solar",
+        cost_sensitivity="Medium",
+        cost_year="2025",
+        capex=None,
+        opex=None,
+        variable_cost=None,
+        lifetime=None,
+        hurdlerate=None,
         orient=0,
         tilt=22,
         efficiency=0.17,
@@ -1203,8 +1296,6 @@ class SolarModel(GenerationModel):
         month_online=None,
         limits=[0, 1000000],
         force_run=False,
-        hurdlerate=0.05,
-        lifetime=35,
     ):
         """
         == description ==
@@ -1235,20 +1326,24 @@ class SolarModel(GenerationModel):
         """
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            capex,
-            opex,
-            variable_cost,
             "Solar",
-            data_path,
-            save_path,
+            cost_param_entry,
+            data_path=data_path,
+            cost_params_file=cost_params_file,
+            cost_sensitivity=cost_sensitivity,
+            cost_year=cost_year,
+            capex=capex,
+            opex=opex,
+            variable_cost=variable_cost,
+            lifetime=lifetime,
+            hurdlerate=hurdlerate,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            limits=limits,
             year_online=year_online,
             month_online=month_online,
-            limits=limits,
-            hurdlerate=hurdlerate,
-            lifetime=lifetime,
+            save_path=save_path,
         )
 
         self.orient = np.deg2rad(orient)  # deg -> rad
@@ -1583,19 +1678,25 @@ class OnshoreWindModel(GenerationModel):
         year_min=2013,
         year_max=2019,
         months=list(range(1, 13)),
-        capex=1230000,
-        opex=30.8 * 1000,
-        variable_cost=6,
-        tilt=5,
+        turbine_size=3.5,
+        cost_params_file="params/SCORES Cost assumptions.xlsx",
+        cost_param_entry="Onshore Wind",
+        technical_params_file="params/Offshore_wind_params.xlsx",
+        cost_sensitivity="Medium",
+        cost_year="2025",
+        capex=None,
+        opex=None,
+        variable_cost=None,
+        lifetime=None,
+        hurdlerate=None,
         air_density=1.23,
-        rotor_diameter=120,
-        rated_rotor_rpm=13,
-        rated_wind_speed=12.5,
-        v_cut_in=3,
-        v_cut_out=25,
+        rotor_diameter=None,
+        rated_wind_speed=None,
+        v_cut_in=None,
+        v_cut_out=None,
         n_turbine=None,
-        turbine_size=3.6,
-        hub_height=90,
+        turbine_scale=False,
+        hub_height=None,
         data_path="",
         save_path="stored_model_runs/",
         save=True,
@@ -1606,8 +1707,6 @@ class OnshoreWindModel(GenerationModel):
         month_online=None,
         force_run=False,
         limits=[0, 1000000],
-        lifetime=25,
-        hurdlerate=0.052,
         scaling_factor=1,
     ):  # this added by CQ so that a power curve can optionally be imported
         """
@@ -1622,6 +1721,10 @@ class OnshoreWindModel(GenerationModel):
         year_min: (int) earliest year in sumlation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
+        cost_params_file: (str) path to file containing cost assumptions: parameters entered as keyword arguments will override these
+        technical_params_file: (str) path to file containing technical assumptions: parameters entered as keyword arguments will override these
+        cost_sensitivity: (str) sensitivity of cost assumptions
+        cost_year: (str) year to which costs are normalised
         fixed_cost: (float) cost incurred per MW of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
         tilt: (float) blade tilt in degrees
@@ -1643,34 +1746,57 @@ class OnshoreWindModel(GenerationModel):
         == returns ==
         None
         """
+
         super().__init__(
             sites,
-            year_min,
-            year_max,
-            months,
-            capex,
-            opex,
-            variable_cost,
             "Onshore Wind",
-            data_path,
-            save_path,
+            cost_param_entry,
+            data_path=data_path,
+            cost_params_file=cost_params_file,
+            cost_sensitivity=cost_sensitivity,
+            cost_year=cost_year,
+            capex=capex,
+            opex=opex,
+            variable_cost=variable_cost,
+            lifetime=lifetime,
+            hurdlerate=hurdlerate,
+            year_min=year_min,
+            year_max=year_max,
+            months=months,
+            limits=limits,
             year_online=year_online,
             month_online=month_online,
-            limits=limits,
-            hurdlerate=hurdlerate,
-            lifetime=lifetime,
+            save_path=save_path,
         )
         # If no values given assume an equl distribution of turbines over sites
-        self.tilt = tilt
         self.air_density = air_density
-        self.rotor_diameter = rotor_diameter
-        self.rated_rotor_rpm = rated_rotor_rpm
-        self.rated_wind_speed = rated_wind_speed
-        self.v_cut_in = v_cut_in
-        self.v_cut_out = v_cut_out
+        if technical_params_file != None:
+            technicalparameters = pd.read_excel(technical_params_file, index_col=0)
+            try:
+                parameterrow = technicalparameters.loc[turbine_size]
+            except KeyError:
+                raise Exception(
+                    "Turbine size not found in technical parameters file. Either add it or enter the parameters manually and set technical_params_file=None"
+                )
+
+            loadedrotor_diameter = parameterrow["Rotor Diameter (m)"]
+            loadedv_cut_in = parameterrow["Cut in speed"]
+            loadedrated_wind_speed = parameterrow["Rated wind speed"]
+            loadedv_cut_out = parameterrow["Cut out speed"]
+            loadedhub_height = parameterrow["Hub height (m)"]
+
+        self.rotor_diameter = (
+            rotor_diameter if rotor_diameter != None else loadedrotor_diameter
+        )
+        self.rated_wind_speed = (
+            rated_wind_speed if rated_wind_speed != None else loadedrated_wind_speed
+        )
+        self.v_cut_in = v_cut_in if v_cut_in != None else loadedv_cut_in
+        self.v_cut_out = v_cut_out if v_cut_out != None else loadedv_cut_out
         self.n_turbine = n_turbine
         self.turbine_size = turbine_size
-        self.hub_height = hub_height
+        self.hub_height = hub_height if hub_height != None else loadedhub_height
+
         self.data_height = data_height  # added by CQ
         self.alpha = alpha  # added by CQ
         self.power_curve = power_curve
@@ -1742,13 +1868,7 @@ class OnshoreWindModel(GenerationModel):
         self.total_installed_capacity = sum(self.n_turbine) * self.turbine_size
 
         # tip speed ratio
-        tsr = (
-            self.rated_rotor_rpm
-            * self.rotor_diameter
-            / (2 * 9.549 * self.rated_wind_speed)
-        )
         area = np.pi * self.rotor_diameter * self.rotor_diameter / 4
-        b = self.tilt
 
         # create the power curve at intervals of 0.1
         v = np.arange(0, self.v_cut_out, 0.1)  # wind speeds (m/s)
@@ -1954,1597 +2074,6 @@ class TidalStreamTurbineModel_P3(TidalStreamTurbineModel):
         )
 
 
-class OnshoreWindModel500(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=39,
-            rated_rotor_rpm=30.0,
-            rated_wind_speed=15,
-            v_cut_in=4,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=0.5,
-            hub_height=53,
-            data_path=data_path,  #
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-        # based on Vestas V39
-
-
-class OnshoreWindModel1000(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=54.2,
-            rated_rotor_rpm=22.0,
-            rated_wind_speed=15,
-            v_cut_in=3,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=1,
-            hub_height=60,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-        # based on AN Bonus 1000/54
-
-
-class OnshoreWindModel1500(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=82,
-            rated_rotor_rpm=14.4,
-            rated_wind_speed=13,
-            v_cut_in=3,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=1.5,
-            hub_height=94,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-        # based on Vestas V82
-
-
-class OnshoreWindModel2000(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=90,
-            rated_rotor_rpm=14.9,
-            rated_wind_speed=13,
-            v_cut_in=4,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=2.0,
-            hub_height=80,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-# class OnshoreWindModel2300(OnshoreWindModel):
-#     def __init__(
-#         self,
-#         sites=["all"],
-#         year_min=2013,
-#         year_max=2019,
-#         months=list(range(1, 13)),
-#         data_path="",
-#         save_path="stored_model_runs/",
-#         save=True,
-#         n_turbine=None,
-#         year_online=None,
-#         month_online=None,
-#         force_run=False,
-# limits = ([0, 1000000],)
-#     ):
-#         super().__init__(
-#             sites=sites,
-#             year_min=year_min,
-#             year_max=year_max,
-#             months=months,
-#             tilt=5,
-#             air_density=1.23,
-#             rotor_diameter=108,
-#             rated_rotor_rpm=16,
-#             rated_wind_speed=11.5,
-#             v_cut_in=3,
-#             v_cut_out=25,
-#             n_turbine=n_turbine,
-#             turbine_size=2.3,
-#             hub_height=80,
-#             data_path=data_path,
-#             save_path=save_path,
-#             save=save,
-#             year_online=year_online,
-#             month_online=month_online,
-#             force_run=force_run,
-# limits = limits
-#         )
-#         # based on the Siemens SWT-2.3-108
-
-
-class OnshoreWindModel2500(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=100,
-            rated_rotor_rpm=14,
-            rated_wind_speed=13,
-            v_cut_in=3,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=2.5,
-            hub_height=85,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-        # based on GE 2.5-100
-
-
-class OnshoreWindModel3000(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=113,
-            rated_rotor_rpm=15.5,
-            rated_wind_speed=12.5,
-            v_cut_in=4,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=3.0,
-            hub_height=80,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OnshoreWindModel3600(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=123,
-            rated_rotor_rpm=13,
-            rated_wind_speed=12,
-            v_cut_in=4,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=3.6,
-            hub_height=80,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OnshoreWindModel4000(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=130,
-            rated_rotor_rpm=13,
-            rated_wind_speed=12,
-            v_cut_in=4,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=4,
-            hub_height=90,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OnshoreWindModel5000(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=145,
-            rated_rotor_rpm=11.5,
-            rated_wind_speed=10.5,
-            v_cut_in=4,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=5,
-            hub_height=100,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OnshoreWindModel6000(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=164,
-            rated_rotor_rpm=11,
-            rated_wind_speed=10,
-            v_cut_in=4,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=6.0,
-            hub_height=100,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OnshoreWindModel6600(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=170,
-            rated_rotor_rpm=11,
-            rated_wind_speed=10,
-            v_cut_in=4,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=6.6,
-            hub_height=100,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OnshoreWindModel7000(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=171.2,
-            rated_rotor_rpm=10.5,
-            rated_wind_speed=10,
-            v_cut_in=4,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=7.0,
-            hub_height=110,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OnshoreWindModel8000(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=164,
-            rated_rotor_rpm=10.5,
-            rated_wind_speed=10,
-            v_cut_in=4,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=8.0,
-            hub_height=120,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OnshoreWindModel9000(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=164,
-            rated_rotor_rpm=10.5,
-            rated_wind_speed=10,
-            v_cut_in=4,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=9.0,
-            hub_height=125,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OnshoreWindModel10000(OnshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=164,
-            rated_rotor_rpm=10.5,
-            rated_wind_speed=10,
-            v_cut_in=4,
-            v_cut_out=25,
-            n_turbine=n_turbine,
-            turbine_size=10,
-            hub_height=130,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OffshoreWindModel2000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=80,
-            rated_rotor_rpm=19,
-            rated_wind_speed=14.5,
-            v_cut_in=3.5,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=2,
-            hub_height=80,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-        # based on Vestas v80 2MW: https://en.wind-turbine-models.com/turbines/19-vestas-v80-2.0
-
-
-class OffshoreWindModel3000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=90,
-            rated_rotor_rpm=18.4,
-            rated_wind_speed=13,
-            v_cut_in=3,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=3,
-            hub_height=80,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-        # based on Vestas V90 3MW: https://en.wind-turbine-models.com/turbines/603-vestas-v90-3.0
-
-
-class OffshoreWindModel4000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=112,
-            rated_rotor_rpm=15,
-            rated_wind_speed=14,
-            v_cut_in=3.5,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=4,
-            hub_height=92.5,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-        # based on Siemens SWT-4.0-130: https://en.wind-turbine-models.com/turbines/1102-siemens-swt-4.0-130
-
-
-class OffshoreWindModel5000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=126,
-            rated_rotor_rpm=12,
-            rated_wind_speed=14.5,
-            v_cut_in=3.5,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=5,
-            hub_height=105,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-        # based on Repower 5M: https://www.thewindpower.net/turbine_en_14_repower_5m.php
-
-        # Based on Repower 5M: https://www.thewindpower.net/turbine_en_14_repower_5m.php
-
-
-class OffshoreWindModel6000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=154,
-            rated_rotor_rpm=11,
-            rated_wind_speed=13,
-            v_cut_in=4,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=6,
-            hub_height=120,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-        # based on Siemens SWT-6.0-154: https://en.wind-turbine-models.com/turbines/657-siemens-swt-6.0-154
-        # hub height is an estimation, as it's site specific
-
-
-class OffshoreWindModel7000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=154,
-            rated_rotor_rpm=11,
-            rated_wind_speed=13,
-            v_cut_in=3,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=7,
-            hub_height=120,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-        # based on Siemens SWT-7.0-154: https://en.wind-turbine-models.com/turbines/1102-siemens-swt-7.0-154
-        # hub height is an estimation, as it's site specific
-
-
-class OffshoreWindModel8000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=164,
-            rated_rotor_rpm=12,
-            rated_wind_speed=13,
-            v_cut_in=4,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=8,
-            hub_height=130,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-        # based on Vestas V164-8MW: https://en.wind-turbine-models.com/turbines/318-vestas-v164-8.0
-
-
-class OffshoreWindModel9000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=177,
-            rated_rotor_rpm=11,
-            rated_wind_speed=11.5,
-            v_cut_in=4,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=9,
-            hub_height=135,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OffshoreWindModel10000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=190,
-            rated_rotor_rpm=11,
-            rated_wind_speed=11.5,
-            v_cut_in=4,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=10,
-            hub_height=140,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OffshoreWindModel11000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=205,
-            rated_rotor_rpm=11,
-            rated_wind_speed=11.5,
-            v_cut_in=4,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=11,
-            hub_height=142.5,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OffshoreWindModel12000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=220,
-            rated_rotor_rpm=11,
-            rated_wind_speed=11.5,
-            v_cut_in=4,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=12,
-            hub_height=145,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OffshoreWindModel13000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=230,
-            rated_rotor_rpm=11,
-            rated_wind_speed=11.5,
-            v_cut_in=4,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=13,
-            hub_height=150,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OffshoreWindModel14000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=237,
-            rated_rotor_rpm=11,
-            rated_wind_speed=11.5,
-            v_cut_in=4,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=14,
-            hub_height=155,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OffshoreWindModel15000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=246,
-            rated_rotor_rpm=11,
-            rated_wind_speed=11.5,
-            v_cut_in=4,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=15,
-            hub_height=160,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OffshoreWindModel16000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=246,
-            rated_rotor_rpm=11,
-            rated_wind_speed=11.5,
-            v_cut_in=4,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=16,
-            hub_height=170,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OffshoreWindModel17000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=262,
-            rated_rotor_rpm=11,
-            rated_wind_speed=11.5,
-            v_cut_in=4,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=17,
-            hub_height=175,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OffshoreWindModel18000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=262,
-            rated_rotor_rpm=11,
-            rated_wind_speed=11.5,
-            v_cut_in=4,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=18,
-            hub_height=185,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OffshoreWindModel19000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=262,
-            rated_rotor_rpm=11,
-            rated_wind_speed=11.5,
-            v_cut_in=4,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=19,
-            hub_height=185,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
-class OffshoreWindModel20000(OffshoreWindModel):
-    def __init__(
-        self,
-        sites=["all"],
-        year_min=2013,
-        year_max=2019,
-        months=list(range(1, 13)),
-        data_path="",
-        save_path="stored_model_runs/",
-        save=True,
-        n_turbine=None,
-        scaling_factor=1,
-        power_curve=None,
-        year_online=None,
-        month_online=None,
-        force_run=False,
-        limits=[0, 1000000],
-    ):
-        super().__init__(
-            sites=sites,
-            year_min=year_min,
-            year_max=year_max,
-            months=months,
-            tilt=5,
-            air_density=1.23,
-            rotor_diameter=284,
-            rated_rotor_rpm=11,
-            rated_wind_speed=11.5,
-            v_cut_in=3,
-            v_cut_out=28,
-            n_turbine=n_turbine,
-            turbine_size=20,
-            hub_height=190,
-            data_path=data_path,
-            save_path=save_path,
-            save=save,
-            year_online=year_online,
-            month_online=month_online,
-            force_run=force_run,
-            limits=limits,
-            scaling_factor=scaling_factor,
-            power_curve=power_curve,
-        )
-
-
 class TidalStreamTurbine_VR_1_0(TidalStreamTurbineModel):
     def __init__(
         self,
@@ -3723,48 +2252,3 @@ class TidalStreamTurbine_VR_3_5(TidalStreamTurbineModel):
             save_path=save_path,
             save=save,
         )
-
-
-class generatordictionaries:
-    """This class exists to hold generation dictionaries, which connect
-    the turbine size to the correct generation model."""
-
-    def __init__(self) -> None:
-        self.offshore = {
-            2: OffshoreWindModel2000,
-            3: OffshoreWindModel3000,
-            4: OffshoreWindModel4000,
-            5: OffshoreWindModel5000,
-            6: OffshoreWindModel6000,
-            7: OffshoreWindModel7000,
-            8: OffshoreWindModel8000,
-            9: OffshoreWindModel9000,
-            10: OffshoreWindModel10000,
-            11: OffshoreWindModel11000,
-            12: OffshoreWindModel12000,
-            13: OffshoreWindModel13000,
-            14: OffshoreWindModel14000,
-            15: OffshoreWindModel15000,
-            16: OffshoreWindModel16000,
-            17: OffshoreWindModel17000,
-            18: OffshoreWindModel18000,
-            19: OffshoreWindModel19000,
-            20: OffshoreWindModel20000,
-        }
-        self.onshore = {
-            0.5: OnshoreWindModel500,
-            1: OnshoreWindModel1000,
-            1.5: OnshoreWindModel1500,
-            2: OnshoreWindModel2000,
-            # 2.3: OnshoreWindModel2300,
-            2.5: OnshoreWindModel2500,
-            3: OnshoreWindModel3000,
-            4: OnshoreWindModel4000,
-            5: OnshoreWindModel5000,
-            6: OnshoreWindModel6000,
-            6.6: OnshoreWindModel6600,
-            7: OnshoreWindModel7000,
-            8: OnshoreWindModel8000,
-            9: OnshoreWindModel9000,
-            10: OnshoreWindModel10000,
-        }

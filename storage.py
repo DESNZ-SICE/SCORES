@@ -4,7 +4,7 @@ Created: 28/07/2020 by C.CROZIER
 File description: This file contains the classes for a single type of energy
 storage and an aggregated portfolio of storage assets.
 
-Notes: The storage base class is technologically agnostic, but child classes are
+Notes: The storage base class is technology agnostic, but child classes are
 icluded that are parameterised for Li-Ion, hydrogen, and thermal storage.
 """
 
