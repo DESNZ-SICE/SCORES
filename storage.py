@@ -84,6 +84,7 @@ class StorageModel:
         name: (str) the name of the asset - for use in graph plotting
         capacity: (float) MWh of storage installed
         limits: array[(float)] the [min,max] capacity in MWh
+        initial_charge: (float) initial state of charge (0-1)
 
         NOTE: both max_c and max_d rate defined FROM THE GRID SIDE. I.E. the maximum energy into and out of the
         storage will be less and more than these respectively.
@@ -500,10 +501,10 @@ class StorageModel:
             self.en_in += surplus * self.t_res
             self.remaining_surplus[t] = 0.0
 
-    def discharge_timestep(self, t, surplus):
+    def discharge_timestep(self, t, deficit):
         """
         == description ==
-        Charges the asset for one timestep - either until all the surplus is
+        Discharges the asset for one timestep - either until all the deficit  is
         used, the asset is full, or the charging rate limit is reached (which
         ever comes first)
 
@@ -523,28 +524,28 @@ class StorageModel:
             # otherwise set the largest possible output to the remaining amount in the store
             largest_out = to_empty
 
-        # surplus in this instance is negative, the largest output is positive. Flip the sign of the surplus and see if the largest output possible is enough to meet the surplus
-        if surplus * self.t_res * (-1) < largest_out:
+        # deficit in this instance is negative, the largest output is positive. Flip the sign of the deficit and see if the largest output possible is enough to meet the surplus
+        if deficit * self.t_res * (-1) < largest_out:
             # sufficent storage can be discharged to meet shortfall
-            self.charge += surplus * self.t_res * 100 / self.eff_out
+            self.charge += deficit * self.t_res * 100 / self.eff_out
             self.efficiencylosses += (
-                (-1) * surplus * self.t_res * 100 / self.eff_out
-            ) + surplus  # works out the losses due to the effeciency
+                (-1) * deficit * self.t_res * 100 / self.eff_out
+            ) + deficit  # works out the losses due to the effeciency
             self.en_out -= (
-                surplus * self.t_res
-            )  # surplus is -ve so this effective adds it to the sum: this tracks the energy which has flown out of the store.
+                deficit * self.t_res
+            )  # deficit is -ve so this effective adds it to the sum: this tracks the energy which has flown out of the store.
             self.remaining_surplus[t] = 0.0  # we've met the shortfall
 
         else:
             # there is insufficient storage to meet shortfall
             # work out how much demand is missed
-            self.missed_demand[t] = surplus + largest_out * self.eff_out / (
+            self.missed_demand[t] = deficit + largest_out * self.eff_out / (
                 100 * self.t_res
             )
             # we're discharging the max amount possible
             self.en_out += largest_out
 
-            self.remaining_surplus[t] = surplus + largest_out * self.eff_out / (
+            self.remaining_surplus[t] = deficit + largest_out * self.eff_out / (
                 100 * self.t_res
             )
             if t >= self.start_up_time:
