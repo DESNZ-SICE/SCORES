@@ -79,8 +79,8 @@ class StorageModel:
         dischargeFixedOpex: (float) yearly operational cost of discharging equipment per MW in GBP
         dischargeLifetime: (int) lifetime of the discharging equipment in years
         variable_cost: (float) cost incurred per MWh of throughput in GBP
-        max_c_rate: (float) the maximum charging rate (% per hour) (0-100)
-        max_d_rate: (float) the maximum discharging rate (% per hour)(0-100)
+        max_c_rate: (float) the maximum charging rate (% per hour) (0-100). This class assumes that the max charge rate is set by the storage medium rather than the charging equipment.
+        max_d_rate: (float) the maximum discharging rate (% per hour)(0-100). This class assumes that the max discharge rate is set by the storage medium rather than the discharging equipment.
         name: (str) the name of the asset - for use in graph plotting
         capacity: (float) MWh of storage installed
         limits: array[(float)] the [min,max] capacity in MWh
