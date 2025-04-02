@@ -473,17 +473,22 @@ class StorageModel:
         None
         """
         # amount required to fill storage
-        to_fill = (copy.deepcopy(self.capacity) - self.charge) * 100 / self.eff_in
+        to_fill = (self.capacity - self.charge) * 100 / self.eff_in
         if to_fill > self.max_c:
-            largest_in = copy.deepcopy(self.max_c)
+            # if the amount to be put in is greater than the maximum charge rate, set the largest possible input to the maximum charge rate
+            largest_in = self.max_c
         else:
-            largest_in = copy.deepcopy(to_fill)
+            largest_in = to_fill
 
         if surplus * self.t_res > largest_in:
             # not all surplus can be stored
+            # add to the total energy in storage, but multiply by the efficiency to account for losses
             self.charge += largest_in * self.eff_in / 100
+            # work out how much is lost to efficiency losses and add to the efficiencylosses counter
             self.efficiencylosses += largest_in * (100 - self.eff_in) / 100
+            # track the energy in
             self.en_in += largest_in
+            # track the energy that could not be stored
             self.curt += surplus * self.t_res - largest_in
             self.remaining_surplus[t] = surplus - largest_in / self.t_res
 
