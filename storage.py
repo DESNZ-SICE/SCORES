@@ -17,29 +17,37 @@ import pyomo.environ as pyo
 import aggregatedEVs as aggEV
 from pandas import DataFrame
 from opt_con_class import System_LinProg_Model, store_optimisation_results
+import pandas as pd
 
 
 class StorageModel:
     def __init__(
         self,
-        eff_in=95,
-        eff_out=95,
-        self_dis=2,
-        storageCapex=391 * 10**3,
-        storageFixedOpex=7.1 * 10**3,
-        storagelifetime=15,
-        storageVarOpex=0,
-        chargeCapex=0,
-        chargeFixedOpex=0,
-        chargeVarOpex=0,
-        chargeLifetime=15,
-        dischargeCapex=0,
-        dischargeFixedOpex=0,
-        dischargeVarOpex=0,
-        dischargeLifetime=15,
-        hurdleRate=0.08,
-        max_c_rate=25,
-        max_d_rate=25,
+        cost_params_file="params/SCORES Cost assumptions.xlsx",
+        technical_params_file="params/SCORES Technical assumptions.xlsx",
+        cost_sensitivity="Medium",
+        cost_year="2025",
+        storage_param_entry="Li-Ion",
+        charge_param_entry=None,
+        discharge_param_entry=None,
+        eff_in=None,
+        eff_out=None,
+        self_dis=None,
+        storageCapex=None,
+        storageFixedOpex=None,
+        storagelifetime=None,
+        storageVarOpex=None,
+        chargeCapex=None,
+        chargeFixedOpex=None,
+        chargeVarOpex=None,
+        chargeLifetime=None,
+        dischargeCapex=None,
+        dischargeFixedOpex=None,
+        dischargeVarOpex=None,
+        dischargeLifetime=None,
+        hurdleRate=None,
+        max_c_rate=None,
+        max_d_rate=None,
         name="Li-Ion Battery",
         capacity=1,
         limits=[0, 1000000000],
@@ -50,6 +58,12 @@ class StorageModel:
         .
 
         == parameters ==
+        Cost_params_file: (str) the file path to the cost assumptions: these can be overwritten by keyword arguments
+        Technical_params_file: (str) the file path to the technical assumptions: these can be overwritten by keyword arguments
+        Cost_sensitivity: (str) the sensitivity of the cost assumptions
+        Storage_param_entry: (str) the entry in the cost assumptions file for the storage medium
+        Charge_param_entry: (str) the entry in the cost assumptions file for the charging equipment
+        Discharge_param_entry: (str) the entry in the cost assumptions file for the discharging equipment
         eff_in: (float) charging efficiency in % (0-100)
         eff_out: (float) discharge efficiency in % (0-100)
         self_dis: (float) self discharge rate in % per month (0-100)
@@ -65,8 +79,8 @@ class StorageModel:
         dischargeFixedOpex: (float) yearly operational cost of discharging equipment per MW in GBP
         dischargeLifetime: (int) lifetime of the discharging equipment in years
         variable_cost: (float) cost incurred per MWh of throughput in GBP
-        max_c_rate: (float) the maximum charging rate (% per hour)
-        max_d_rate: (float) the maximum discharging rate (% per hour)
+        max_c_rate: (float) the maximum charging rate (% per hour) (0-100)
+        max_d_rate: (float) the maximum discharging rate (% per hour)(0-100)
         name: (str) the name of the asset - for use in graph plotting
         capacity: (float) MWh of storage installed
         limits: array[(float)] the [min,max] capacity in MWh
@@ -77,6 +91,115 @@ class StorageModel:
         == returns ==
         None
         """
+
+        if cost_params_file != None:
+            cost_params = pd.read_excel(cost_params_file, sheet_name=cost_sensitivity)
+            cost_params = cost_params.set_index(["Technology", "Year"])
+            if storage_param_entry != None:
+                raise ValueError(
+                    "Storage parameter entry not specified: the storage parameter entry must be set. The entries for charging and discharging equipment are optional."
+                )
+            storagerow = cost_params.loc[storage_param_entry, cost_year]
+            loaded_storageCapex = storagerow["Capex (£/MWh)"]
+            loaded_storage_fixedopex = storagerow["Fixed Opex (£/MWh/year)"]
+            loaded_storage_variableopex = storagerow["Variable Opex (£/MWh)"]
+            loaded_storage_lifetime = storagerow["Operating Lifetime-years"]
+            loaded_hurdle_rate = storagerow["Hurdle Rate-(%)"]
+            if charge_param_entry != None:
+                loaded_charge_capex = cost_params.loc[charge_param_entry, cost_year][
+                    "Capex (£/MW)"
+                ]
+                loaded_charge_fixedopex = cost_params.loc[
+                    charge_param_entry, cost_year
+                ]["Fixed Opex (£/MW/year)"]
+                loaded_charge_variableopex = cost_params.loc[
+                    charge_param_entry, cost_year
+                ]["Variable Opex (£/MWh)"]
+                loaded_charge_lifetime = cost_params.loc[charge_param_entry, cost_year][
+                    "Operating Lifetime-years"
+                ]
+            else:
+                (
+                    loaded_charge_capex,
+                    loaded_charge_fixedopex,
+                    loaded_charge_variableopex,
+                ) = (0, 0, 0)
+            if discharge_param_entry != None:
+                loaded_discharge_capex = cost_params.loc[
+                    discharge_param_entry, cost_year
+                ]["Capex (£/MW)"]
+                loaded_discharge_fixedopex = cost_params.loc[
+                    discharge_param_entry, cost_year
+                ]["Fixed Opex (£/MW/year)"]
+                loaded_discharge_variableopex = cost_params.loc[
+                    discharge_param_entry, cost_year
+                ]["Variable Opex (£/MWh)"]
+                loaded_discharge_lifetime = cost_params.loc[
+                    discharge_param_entry, cost_year
+                ]["Operating Lifetime-years"]
+
+        storageCapex = storageCapex if storageCapex != None else loaded_storageCapex
+        storageFixedOpex = (
+            storageFixedOpex if storageFixedOpex != None else loaded_storage_fixedopex
+        )
+        storageVarOpex = (
+            storageVarOpex if storageVarOpex != None else loaded_storage_variableopex
+        )
+        storagelifetime = (
+            storagelifetime if storagelifetime != None else loaded_storage_lifetime
+        )
+
+        chargeCapex = chargeCapex if chargeCapex != None else loaded_charge_capex
+        chargeFixedOpex = (
+            chargeFixedOpex if chargeFixedOpex != None else loaded_charge_fixedopex
+        )
+        chargeVarOpex = (
+            chargeVarOpex if chargeVarOpex != None else loaded_charge_variableopex
+        )
+        chargeLifetime = (
+            chargeLifetime if chargeLifetime != None else loaded_charge_lifetime
+        )
+
+        dischargeCapex = (
+            dischargeCapex if dischargeCapex != None else loaded_discharge_capex
+        )
+        dischargeFixedOpex = (
+            dischargeFixedOpex
+            if dischargeFixedOpex != None
+            else loaded_discharge_fixedopex
+        )
+        dischargeVarOpex = (
+            dischargeVarOpex
+            if dischargeVarOpex != None
+            else loaded_discharge_variableopex
+        )
+        dischargeLifetime = (
+            dischargeLifetime
+            if dischargeLifetime != None
+            else loaded_discharge_lifetime
+        )
+
+        hurdleRate = hurdleRate if hurdleRate != None else loaded_hurdle_rate
+
+        if technical_params_file != None:
+            technical_params = pd.read_excel(technical_params_file)
+            technical_params = technical_params.set_index(["Technology"])
+            storagerow = technical_params.loc[storage_param_entry, cost_year]
+            chargerow = technical_params.loc[charge_param_entry, cost_year]
+            dischargerow = technical_params.loc[discharge_param_entry, cost_year]
+
+            loaded_eff_in = chargerow["Efficiency-%"] * 100
+            loaded_eff_out = dischargerow["Efficiency-%"] * 100
+            loaded_self_dis = storagerow["Self Discharge-%"] * 100
+            loaded_max_c_rate = storagerow["Max C Rate-%"] * 100
+            loaded_max_d_rate = storagerow["Max D Rate-%"] * 100
+
+        eff_in = eff_in if eff_in != None else loaded_eff_in
+        eff_out = eff_out if eff_out != None else loaded_eff_out
+        self_dis = self_dis if self_dis != None else loaded_self_dis
+        max_c_rate = max_c_rate if max_c_rate != None else loaded_max_c_rate
+        max_d_rate = max_d_rate if max_d_rate != None else loaded_max_d_rate
+
         self.energy_shortfalls = 0
         self.actual_reliability = 0
         self.eff_in = eff_in
