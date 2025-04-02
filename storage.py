@@ -512,9 +512,9 @@ class StorageModel:
         # amount that can be extracted from storage
         to_empty = self.charge * self.eff_out / 100
         if to_empty > self.max_d:
-            largest_out = copy.deepcopy(self.max_d)
+            largest_out = self.max_d
         else:
-            largest_out = copy.deepcopy(to_empty)
+            largest_out = to_empty
 
         if surplus * self.t_res * (-1) < largest_out:
             # sufficent storage can be discharged to meet shortfall
