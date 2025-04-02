@@ -810,6 +810,7 @@ class MultipleStorageAssets:
         self.actual_reliability = 0
         self.assets = assets
         self.n_assets = len(assets)
+        self.unit_capacity = [0.0] * len(assets)
         self.rel_capacity = [0.0] * len(assets)
         self.units = {}
         # added by cormac for plotting timeseries from optimisation
@@ -839,12 +840,14 @@ class MultipleStorageAssets:
         for i in range(self.n_assets):
             # adding each asset as a "unit"
             self.units[i] = assets[i]
-            self.rel_capacity[i] = assets[i].capacity
 
-        total_capacity = sum(self.rel_capacity)
+            self.unit_capacity[i] = assets[i].capacity
+
+        total_capacity = sum(self.unit_capacity)
         self.capacity = total_capacity
+        # work out the relative size of
         for i in range(self.n_assets):
-            self.rel_capacity[i] = float(self.rel_capacity[i]) / total_capacity
+            self.rel_capacity[i] = float(self.unit_capacity[i]) / total_capacity
 
     def reset(self):
         """
@@ -938,10 +941,18 @@ class MultipleStorageAssets:
     ):
         """
         == description ==
-        .
+        Charges the storage assets in the order specified by c_order
 
         == parameters ==
-        None
+        surplus: (Array<float>) the surplus generation to be smoothed in MW
+        c_order: (Array<int>) the order in which to charge the assets
+        d_order: (Array<int>) the order in which to discharge the assets
+        t_res: (float) the size of time intervals in hours
+        return_output: (boo) whether the smoothed profile should be returned
+        start_up_time: (int) number of first time intervals to be ignored when
+            calculating the % of met demand (to allow for start up effects).
+        return_di_av: (boo) whether the average discharge and charge profiles
+            should be returned
 
         == returns ==
         None
@@ -952,21 +963,28 @@ class MultipleStorageAssets:
             raise Exception("d_order wrong length")
 
         shortfalls = 0
-        self.energy_shortfalls = 0
+        self.energy_shortfalls = 0  # keeps track of total energy  shortfalls
 
-        remaining_surplus = [0] * len(surplus)
-        self.curtarray = np.zeros(len(surplus))
+        remaining_surplus = [0] * len(
+            surplus
+        )  # keeps track of the remaining surplus after each timestep
+        self.curtarray = np.zeros(
+            len(surplus)
+        )  # keeps track of the total surplus that could not be stored
         soc = []
         for i in range(self.n_assets):
             soc.append([i])
         self.curt = 0.0
-        di_profiles = {}
+        di_profiles = (
+            {}
+        )  # keeps track of the average daily discharge and charge profiles
         T = int(24 / t_res)
         for i in range(len(c_order)):
             di_profiles[i] = {"c": [0.0] * T, "d": [0.0] * T}
 
         # initialise all storage units
         for i in range(self.n_assets):
+            # set the maximum charge and discharge rates in units of MWh instead of %
             self.units[i].max_c = (
                 self.units[i].capacity * self.units[i].max_c_rate * t_res / 100
             )
@@ -984,12 +1002,14 @@ class MultipleStorageAssets:
             self.units[i].chargetimeseries = []
             self.units[i].SOC = []
         for t in range(len(surplus)):
+            # this steps through every value in the surplus array, and performs the required steps: self discharge, and then charge or discharge
             # self discharge all assets
             self.self_discharge_timestep()
 
             t_surplus = copy.deepcopy(surplus[t])
 
             if t_surplus > 0:
+                # if the surplus is positive, then we want to charge the storage assets
                 for i in range(self.n_assets):
                     self.units[i].SOC.append(self.units[i].charge)
                     if t_surplus > 0:
@@ -1010,6 +1030,7 @@ class MultipleStorageAssets:
                 self.curtarray[t] = remaining_surplus[t]
 
             elif t_surplus < 0:
+                # if the surplus is negative, then we want to discharge the storage assets
                 if self.DispatchEnabled:
                     # we want to see if the energy demand over the time horizon exceeds the energy available from the storage
                     # if it does we will need to dispatch the dispatchable asset
@@ -1022,23 +1043,14 @@ class MultipleStorageAssets:
                     # and if the storage levels are zero at any point, we will dispatch the dispatchable asset
                     storelevels = [self.units[i].charge for i in range(self.n_assets)]
                     maxcapacity = [self.units[i].capacity for i in range(self.n_assets)]
-                    # if t > 4807 and t < 4820:
-                    #     print("_____________________")
-                    #     print(t)
-                    #     print(storelevels)
-                    #     print(maxcapacity)
+
                     for hourinfutureprediction in range(lengthoftimehorizon):
                         this_surplus = surplus[t + hourinfutureprediction]
 
-                        # if t > 4807 and t < 4820:
-                        #     print(f"Hour: {hourinfutureprediction}")
-                        #     print(f"This surplus: {this_surplus}")
                         if this_surplus >= 0:
-                            # if t > 4807 and t < 4820:
-                            #     print("Charging")
+
                             for i in range(self.n_assets):
                                 if this_surplus > 0:
-                                    # charge the stores in the order of the c_order
                                     storelevels[c_order[i]] += (
                                         this_surplus
                                         * self.units[c_order[i]].eff_in
@@ -1065,8 +1077,6 @@ class MultipleStorageAssets:
                                         # if the store is not full, then the surplus is all stored
                                         this_surplus = 0
                         elif this_surplus < 0:
-                            # if t > 4807 and t < 4820:
-                            #     print("Discharging")
                             for i in range(self.n_assets):
                                 if this_surplus < 0:
                                     storelevels[d_order[i]] += (
@@ -1086,13 +1096,7 @@ class MultipleStorageAssets:
                                     else:
                                         this_surplus = 0
 
-                        # if t > 4807 and t < 4820:
-                        #     print(f"Store levels: {storelevels}")
                         summedstorelevels = sum(storelevels)
-                        # if t > 4807 and t < 4820:
-                        #     print(f"Summed store levels: {summedstorelevels}")
-                        # if there is any hour in the time horizon where the storage levels are zero, we want to dispatch the dispatchable asset.
-                        # we are not dispatching our future predictions, we are dispatching the current hour
                         if summedstorelevels <= 0:
                             for DispatchableAsset in self.DispatchableAssetList:
                                 t_surplus = DispatchableAsset.dispatch(t, t_surplus)
