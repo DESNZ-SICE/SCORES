@@ -512,10 +512,13 @@ class StorageModel:
         # amount that can be extracted from storage
         to_empty = self.charge * self.eff_out / 100
         if to_empty > self.max_d:
+            # if the maximum amount which can be discharged is less than the remaining amount in the store, set the largest possible output to the maximum discharge rate
             largest_out = self.max_d
         else:
+            # otherwise set the largest possible output to the remaining amount in the store
             largest_out = to_empty
 
+        # surplus in this instance is negative, the largest output is positive. Flip the sign of the surplus and see if the largest output possible is enough to meet the surplus
         if surplus * self.t_res * (-1) < largest_out:
             # sufficent storage can be discharged to meet shortfall
             self.charge += surplus * self.t_res * 100 / self.eff_out
@@ -524,15 +527,18 @@ class StorageModel:
             ) + surplus  # works out the losses due to the effeciency
             self.en_out -= (
                 surplus * self.t_res
-            )  # surplus is -ve so this effective adds it to the sum
-            self.remaining_surplus[t] = 0.0
+            )  # surplus is -ve so this effective adds it to the sum: this tracks the energy which has flown out of the store.
+            self.remaining_surplus[t] = 0.0  # we've met the shortfall
 
         else:
             # there is insufficient storage to meet shortfall
+            # work out how much demand is missed
             self.missed_demand[t] = surplus + largest_out * self.eff_out / (
                 100 * self.t_res
             )
+            # we're discharging the max amount possible
             self.en_out += largest_out
+
             self.remaining_surplus[t] = surplus + largest_out * self.eff_out / (
                 100 * self.t_res
             )
@@ -825,12 +831,15 @@ class MultipleStorageAssets:
         if d_order is None:
             d_order = list(range(self.n_assets))
 
+        # if the order is not specified, default to the order of the assets in the list of assets
+
         self.c_order = c_order
         self.d_order = d_order
 
         for i in range(self.n_assets):
+            # adding each asset as a "unit"
             self.units[i] = assets[i]
-            self.rel_capacity[i] = copy.deepcopy(assets[i].capacity)
+            self.rel_capacity[i] = assets[i].capacity
 
         total_capacity = sum(self.rel_capacity)
         self.capacity = total_capacity
