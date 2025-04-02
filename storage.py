@@ -576,7 +576,7 @@ class StorageModel:
     def analyse_usage(self):
         """
         == description ==
-        .
+        Returns a few of the key metrics for the storage asset.
 
         == parameters ==
         None
