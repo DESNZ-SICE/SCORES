@@ -586,12 +586,18 @@ class NuclearModel(GenerationModel):
         year_min: (int) earliest year in sumlation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
+        cost_params_file: (str) path to the cost parameters file: it will be overwritten by any keyword arguments
+        cost_param_entry: (str) entry in the cost parameters file
+        cost_sensitivity: (str) sensitivity of the cost parameters
+        cost_year: (str) year of the cost parameters
         Capex: (float) cost incurred per MW of installation in GBP
         opex: (float) yearly cost per MW of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
         data_path: (str) path to file containing raw data
         save_path: (str) path to file where output will be saved
         save: (bool) determines whether to save the results of the run
+        year_online: list(int) year the generation unit was installed, at each site
+        month_online: list(int) month the generation unit was installed, at each site
         capacity: (Array <float>) installed capacity of each site in MW
         limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
         lifetime: (int) lifetime of the generation unit in years
@@ -612,7 +618,7 @@ class NuclearModel(GenerationModel):
             cost_param_entry,
             cost_params_file=cost_params_file,
             cost_sensitivity=cost_sensitivity,
-            cost_year="2025",
+            cost_year=cost_year,
             capex=capex,
             opex=opex,
             variable_cost=variable_cost,

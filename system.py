@@ -308,9 +308,7 @@ class ElectricitySystem:
         f.write("STORAGE UTILISATION\n")
         f.write("--------------------\n\n")
         use = self.storage.analyse_usage()
-        n_years = self.storage.units[
-            0
-        ].n_years  # seems like the numbers are being divided by years twice
+        n_years = self.storage.units[0].n_years
         curt = use[2] / n_years
         for i in range(self.n_storage):
             f.write(">> " + self.storage.units[i].name + " <<\n\n")
@@ -784,8 +782,6 @@ class ElectricitySystem:
         (float) lowest found total system cost £bn /year
         """
 
-        # ok, how about a three stage process: opimise generation ratio,
-        # optimise storage, optimise amount of
         if min_gen_cap is not None:
             self.min_gen_cap = min_gen_cap
         if max_gen_cap is not None:
