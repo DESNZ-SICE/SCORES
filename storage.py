@@ -1161,7 +1161,7 @@ class MultipleStorageAssets:
     ):
         """
         == description ==
-        This will
+        This simulates the charging of storage assets. This is a holder class to enable other function to be added when other charging strategies are developed
 
         == parameters ==
         surplus: (Array<float>) the surplus generation to be smoothed in MW
