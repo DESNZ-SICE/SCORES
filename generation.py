@@ -280,6 +280,18 @@ class GenerationModel:
         )
 
     def get_diurnal_profile(self):
+        """
+        == description ==
+        This function returns the average diurnal profile of the generation
+        unit over the simulated period. This is done by reshaping the powerout
+        array into a 2d array with 24 columns (one for each hour of the day),
+        and then taking the mean of each column.
+        == parameters ==
+        None
+        == returns ==
+        (array<float>) average diurnal profile of the generation unit
+        """
+
         # this reshapes the powerout array into a 2d array with 24 columns (one for each hour of the day), and then takes the mean of each column
         p = self.power_out_scaled.reshape(-1, 24).mean(axis=0)
         return p
@@ -927,13 +939,11 @@ class TidalStreamTurbineModel(GenerationModel):
                     self.power_out[dn * 24 + hr] += (
                         f * P[p2] + (1 - f) * P[p1]
                     ) * self.n_turbine[si]
-                    # self.n_good_points[dn* 24 + hr] += 1
-                    # I believe this should be =1 not +=1 (Matt)
                     self.n_good_points[dn * 24 + hr] = 1
         # the power values have been generated for each point. However, points with missing data are
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
-        # currently installed capacity: the values should not
+        # currently installed capacity: the values should not change
         self.scale_output(self.total_installed_capacity)
 
 
@@ -1200,7 +1210,7 @@ class OffshoreWindModel(GenerationModel):
                 rangeselectorindex : self.loadindex + len(self.n_good_points)
             ]
 
-            # the approach hass been changed to vectorise the calculation of power output
+            # the approach has been changed to vectorise the calculation of power output
             # this is done by loading all the wind speeds into an array and then calculating
             # the power output for each point in the array. This is much faster than the previous
             # approach of calculating each point individually
@@ -1235,7 +1245,7 @@ class OffshoreWindModel(GenerationModel):
         # the power values have been generated for each point. However, points with missing data are
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
-        # currently installed capacity: the values should not
+        # currently installed capacity: the values should not change
         self.speeds = site_speeds
         self.power_out = self.power_out_array.tolist()
         self.scale_output(self.total_installed_capacity)
@@ -1644,7 +1654,6 @@ class SolarModel(GenerationModel):
 
 
 class OnshoreWindModel(GenerationModel):
-    # need to adjust the cost!
 
     def __init__(
         self,
@@ -1675,14 +1684,14 @@ class OnshoreWindModel(GenerationModel):
         save_path="stored_model_runs/",
         save=True,
         data_height=100,
-        alpha=0.143,  # this row added by CQ to calculate wind shear
+        alpha=0.143,
         power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
         limits=[0, 1000000],
         scaling_factor=1,
-    ):  # this added by CQ so that a power curve can optionally be imported
+    ):
         """
         == description ==
         Initialises an OnshoreWindModel object. Searches for a saved result at
@@ -1821,11 +1830,9 @@ class OnshoreWindModel(GenerationModel):
         # create the power curve at intervals of 0.1
         v = np.arange(0, self.v_cut_out, 0.1)  # wind speeds (m/s)
 
-        # CQ added two power_curve options: either calculate, or import
         if self.power_curve is None:
             P = [0.0] * len(v)  # power output (MW)
 
-            # the following is a CQ edit - new Cp calculation
             Cp = (
                 self.turbine_size
                 * 1e6
@@ -1923,7 +1930,7 @@ class OnshoreWindModel(GenerationModel):
         # the power values have been generated for each point. However, points with missing data are
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
-        # currently installed capacity: the values should not
+        # currently installed capacity: the values should not change
         self.speeds = site_speeds
         self.power_out = self.power_out_array.tolist()
         self.scale_output(self.total_installed_capacity)
