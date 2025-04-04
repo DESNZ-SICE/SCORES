@@ -24,7 +24,7 @@ class StorageModel:
     def __init__(
         self,
         cost_params_file="params/SCORES Cost assumptions.xlsx",
-        technical_params_file="params/SCORES Technical assumptions.xlsx",
+        technical_params_file="params/Storage_technical_assumptions.xlsx",
         cost_sensitivity="Medium",
         cost_year="2025",
         storage_param_entry="Li-Ion",
@@ -184,16 +184,20 @@ class StorageModel:
 
         if technical_params_file != None:
             technical_params = pd.read_excel(technical_params_file)
-            technical_params = technical_params.set_index(["Technology"])
-            storagerow = technical_params.loc[storage_param_entry, cost_year]
-            chargerow = technical_params.loc[charge_param_entry, cost_year]
-            dischargerow = technical_params.loc[discharge_param_entry, cost_year]
+            technical_params = technical_params.set_index(
+                ["Technology", "Technology type"]
+            )
+            storagerow = technical_params.loc[storage_param_entry, "Storage"]
+            if charge_param_entry != None:
+                chargerow = technical_params.loc[charge_param_entry, "Charge"]
+                loaded_eff_in = chargerow["Efficiency-%"] * 100
+            if discharge_param_entry != None:
+                dischargerow = technical_params.loc[discharge_param_entry, "Discharge"]
+                loaded_eff_out = dischargerow["Efficiency-%"] * 100
 
-            loaded_eff_in = chargerow["Efficiency-%"] * 100
-            loaded_eff_out = dischargerow["Efficiency-%"] * 100
-            loaded_self_dis = storagerow["Self Discharge-%"] * 100
-            loaded_max_c_rate = storagerow["Max C Rate-%"] * 100
-            loaded_max_d_rate = storagerow["Max D Rate-%"] * 100
+            loaded_self_dis = storagerow["Self Discharge-%/month"] * 100
+            loaded_max_c_rate = storagerow["Max C Rate-%/hour"] * 100
+            loaded_max_d_rate = storagerow["Max D Rate-%/hour"] * 100
 
         eff_in = eff_in if eff_in != None else loaded_eff_in
         eff_out = eff_out if eff_out != None else loaded_eff_out
