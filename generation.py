@@ -1097,32 +1097,8 @@ class OffshoreWindModel(GenerationModel):
         stepstartime = time.time()
         if self.data_path == "":
             raise Exception("model can not be run without a data path")
-        if self.sites[0] == "all":
-            sites = []
-            with open(self.data_path + "site_locs.csv", "r") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    sites.append(int(row[0]))
-            self.sites = sites
-
-        elif self.sites[:2] == "lf":
-            sites = []
-            lwst = str(sites[2:])
-            locs = []
-            with open(self.save_path + "s_load_factors.csv", "r") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    if float(row[2]) * 100 > lwst:
-                        locs.append([row[0] + row[1]])
-            with open(self.data_path + "site_locs.csv", "r") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    if row[1] + row[2] in locs:
-                        sites.apend(int(row[0]))
-            self.sites = sites
+        if type(self.sites[0]) != int:
+            raise Exception("The sites must be a list of integers")
 
         # If no values given assume an equl distribution of turbines over sites
         if self.n_turbine is None:
@@ -1832,34 +1808,8 @@ class OnshoreWindModel(GenerationModel):
 
         if self.data_path == "":
             raise Exception("model can not be run without a data path")
-        if self.sites[0] == "all":
-            sites = []
-            with open(self.data_path + "site_locs.csv", "r") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    sites.append(int(row[0]))
-            self.sites = sites
-
-        elif self.sites[:2] == "lf":
-            sites = []
-            lwst = str(sites[2:])
-            locs = []
-            with open(
-                self.save_path + "w" + str(self.turbine_size) + "_load_factors.csv", "r"
-            ) as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    if float(row[2]) * 100 > lwst:
-                        locs.append([row[0] + row[1]])
-            with open(self.data_path + "site_locs.csv", "r") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    if row[1] + row[2] in locs:
-                        sites.apend(int(row[0]))
-            self.sites = sites
+        if type(self.sites[0]) != int:
+            raise Exception("The sites must be a list of integers")
 
         if self.n_turbine is None:
             self.n_turbine = [1] * len(self.sites)
