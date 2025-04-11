@@ -26,7 +26,7 @@ class StorageModel:
         cost_params_file="params/SCORES Cost assumptions.xlsx",
         technical_params_file="params/Storage_technical_assumptions.xlsx",
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         storage_param_entry="Li-Ion",
         charge_param_entry=None,
         discharge_param_entry=None,
@@ -96,28 +96,28 @@ class StorageModel:
         if cost_params_file != None:
             cost_params = pd.read_excel(cost_params_file, sheet_name=cost_sensitivity)
             cost_params = cost_params.set_index(["Technology", "Year"])
-            if storage_param_entry != None:
+            if storage_param_entry == None:
                 raise ValueError(
                     "Storage parameter entry not specified: the storage parameter entry must be set. The entries for charging and discharging equipment are optional."
                 )
             storagerow = cost_params.loc[storage_param_entry, cost_year]
-            loaded_storageCapex = storagerow["Capex (£/MWh)"]
-            loaded_storage_fixedopex = storagerow["Fixed Opex (£/MWh/year)"]
-            loaded_storage_variableopex = storagerow["Variable Opex (£/MWh)"]
-            loaded_storage_lifetime = storagerow["Operating Lifetime-years"]
-            loaded_hurdle_rate = storagerow["Hurdle Rate-(%)"]
+            loaded_storageCapex = storagerow["Capex-£/MWh"]
+            loaded_storage_fixedopex = storagerow["Fixed Opex-£/MWh/year"]
+            loaded_storage_variableopex = storagerow["Variable O&M-£/MWh"]
+            loaded_storage_lifetime = storagerow["Operating lifetime-years"]
+            loaded_hurdle_rate = storagerow["Hurdle Rate-%"]
             if charge_param_entry != None:
-                loaded_charge_capex = cost_params.loc[charge_param_entry, cost_year][
-                    "Capex (£/MW)"
-                ]
+                loaded_charge_capex = (
+                    cost_params.loc[charge_param_entry, cost_year]["Capex-£/kW"] * 1000
+                )
                 loaded_charge_fixedopex = cost_params.loc[
                     charge_param_entry, cost_year
-                ]["Fixed Opex (£/MW/year)"]
+                ]["Fixed Opex-£/MW/year"]
                 loaded_charge_variableopex = cost_params.loc[
                     charge_param_entry, cost_year
-                ]["Variable Opex (£/MWh)"]
+                ]["Variable O&M-£/MWh"]
                 loaded_charge_lifetime = cost_params.loc[charge_param_entry, cost_year][
-                    "Operating Lifetime-years"
+                    "Operating lifetime-years"
                 ]
             else:
                 (
@@ -126,18 +126,19 @@ class StorageModel:
                     loaded_charge_variableopex,
                 ) = (0, 0, 0)
             if discharge_param_entry != None:
-                loaded_discharge_capex = cost_params.loc[
-                    discharge_param_entry, cost_year
-                ]["Capex (£/MW)"]
+                loaded_discharge_capex = (
+                    cost_params.loc[discharge_param_entry, cost_year]["Capex-£/kW"]
+                    * 1000
+                )
                 loaded_discharge_fixedopex = cost_params.loc[
                     discharge_param_entry, cost_year
-                ]["Fixed Opex (£/MW/year)"]
+                ]["Fixed Opex-£/MW/year"]
                 loaded_discharge_variableopex = cost_params.loc[
                     discharge_param_entry, cost_year
-                ]["Variable Opex (£/MWh)"]
+                ]["Variable O&M-£/MWh"]
                 loaded_discharge_lifetime = cost_params.loc[
                     discharge_param_entry, cost_year
-                ]["Operating Lifetime-years"]
+                ]["Operating lifetime-years"]
 
         storageCapex = storageCapex if storageCapex != None else loaded_storageCapex
         storageFixedOpex = (
@@ -688,6 +689,7 @@ class BatteryStorageModel(StorageModel):
         capacity=1,
     ):
         super().__init__(
+            cost_params_file="params/SCORES Cost assumptions.xlsx",
             eff_in=eff_in,
             eff_out=eff_out,
             self_dis=self_dis,
@@ -715,29 +717,43 @@ class BatteryStorageModel(StorageModel):
 class HydrogenStorageModel(StorageModel):
     def __init__(
         self,
-        eff_in=78.7,
-        eff_out=50,
-        self_dis=0,
-        storageCapex=500,
-        storageFixedOpex=9.2,
-        storagelifetime=30,
-        storageVarOpex=2,
-        chargeCapex=730 * 10**3,
-        chargeFixedOpex=30 * 10**3,
-        chargeVarOpex=4,
-        chargeLifetime=30,
-        dischargeCapex=623 * 10**3,
-        dischargeFixedOpex=13 * 10**3,
-        dischargeVarOpex=4.0,
-        dischargeLifetime=25,
-        max_c_rate=0.06,
-        max_d_rate=0.12,
+        cost_params_file="params/SCORES Cost assumptions.xlsx",
+        technical_params_file="params/Storage_technical_assumptions.xlsx",
+        cost_sensitivity="Medium",
+        cost_year=2025,
+        storage_param_entry="Salt Cavern",
+        charge_param_entry="PEM",
+        discharge_param_entry="Hydrogen CCGT",
+        eff_in=None,
+        eff_out=None,
+        self_dis=None,
+        storageCapex=None,
+        storageFixedOpex=None,
+        storagelifetime=None,
+        storageVarOpex=None,
+        chargeCapex=None,
+        chargeFixedOpex=None,
+        chargeVarOpex=None,
+        chargeLifetime=None,
+        dischargeCapex=None,
+        dischargeFixedOpex=None,
+        dischargeVarOpex=None,
+        dischargeLifetime=None,
+        max_c_rate=None,
+        max_d_rate=None,
         capacity=1,
         initial_charge=1,
-        hurdleRate=0.1,
+        hurdleRate=None,
         limits=[0, 1000000000],
     ):
         super().__init__(
+            cost_params_file=cost_params_file,
+            technical_params_file=technical_params_file,
+            cost_sensitivity=cost_sensitivity,
+            cost_year=cost_year,
+            storage_param_entry=storage_param_entry,
+            charge_param_entry=charge_param_entry,
+            discharge_param_entry=discharge_param_entry,
             eff_in=eff_in,
             eff_out=eff_out,
             self_dis=self_dis,
