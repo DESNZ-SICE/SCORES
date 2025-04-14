@@ -689,7 +689,8 @@ class BatteryStorageModel(StorageModel):
         capacity=1,
     ):
         super().__init__(
-            cost_params_file="params/SCORES Cost assumptions.xlsx",
+            cost_params_file=None,
+            technical_params_file=None,
             eff_in=eff_in,
             eff_out=eff_out,
             self_dis=self_dis,
