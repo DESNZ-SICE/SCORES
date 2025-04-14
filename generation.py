@@ -24,7 +24,7 @@ class GenerationModel:
         data_path="",
         cost_params_file=None,
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=None,
         opex=None,
         variable_cost=None,
@@ -73,11 +73,9 @@ class GenerationModel:
 
         if cost_params_file != None:
             # Read in cost parameters
-            cost_params = pd.read_excel(
-                cost_params_file, sheet_name=cost_sensitivity, index_col=0
-            )
-            rowname = cost_param_entry + "-" + cost_year
-            datarow = cost_params.loc[rowname]
+            cost_params = pd.read_excel(cost_params_file, sheet_name=cost_sensitivity)
+            cost_params = cost_params.set_index(["Technology", "Year"])
+            datarow = cost_params.loc[cost_param_entry, cost_year]
 
             loadedcapex = datarow["Capex-£/kW"] * 1000
             loadedopex = datarow["Fixed Opex-£/MW/year"]
@@ -282,6 +280,18 @@ class GenerationModel:
         )
 
     def get_diurnal_profile(self):
+        """
+        == description ==
+        This function returns the average diurnal profile of the generation
+        unit over the simulated period. This is done by reshaping the powerout
+        array into a 2d array with 24 columns (one for each hour of the day),
+        and then taking the mean of each column.
+        == parameters ==
+        None
+        == returns ==
+        (array<float>) average diurnal profile of the generation unit
+        """
+
         # this reshapes the powerout array into a 2d array with 24 columns (one for each hour of the day), and then takes the mean of each column
         p = self.power_out_scaled.reshape(-1, 24).mean(axis=0)
         return p
@@ -322,7 +332,7 @@ class DispatchableGenerator(GenerationModel):
         cost_params_file="params/SCORES Cost assumptions.xlsx",
         cost_param_entry="CCGT H Class",
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=None,
         opex=None,
         variable_opex=None,
@@ -426,7 +436,7 @@ class Interconnector(GenerationModel):
         cost_params_file=None,
         cost_param_entry=None,
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=4000000,
         opex=50000,
         gentype="Interconnector",
@@ -548,7 +558,7 @@ class NuclearModel(GenerationModel):
         cost_params_file=None,
         cost_param_entry=None,
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=4000000,
         opex=50000,
         variable_cost=2,
@@ -576,12 +586,18 @@ class NuclearModel(GenerationModel):
         year_min: (int) earliest year in sumlation
         year_max: (int) latest year in simulation
         months: (Array<int>) list of months to be included in the simulation
+        cost_params_file: (str) path to the cost parameters file: it will be overwritten by any keyword arguments
+        cost_param_entry: (str) entry in the cost parameters file
+        cost_sensitivity: (str) sensitivity of the cost parameters
+        cost_year: (str) year of the cost parameters
         Capex: (float) cost incurred per MW of installation in GBP
         opex: (float) yearly cost per MW of installation in GBP
         variable_cost: (float) cost incurred per MWh of generation in GBP
         data_path: (str) path to file containing raw data
         save_path: (str) path to file where output will be saved
         save: (bool) determines whether to save the results of the run
+        year_online: list(int) year the generation unit was installed, at each site
+        month_online: list(int) month the generation unit was installed, at each site
         capacity: (Array <float>) installed capacity of each site in MW
         limits: (Array<float>) used to define the max and min installed generation in MW ([min,max])
         lifetime: (int) lifetime of the generation unit in years
@@ -602,7 +618,7 @@ class NuclearModel(GenerationModel):
             cost_param_entry,
             cost_params_file=cost_params_file,
             cost_sensitivity=cost_sensitivity,
-            cost_year="2025",
+            cost_year=cost_year,
             capex=capex,
             opex=opex,
             variable_cost=variable_cost,
@@ -652,7 +668,7 @@ class GeothermalModel(GenerationModel):
         cost_params_file=None,
         cost_param_entry=None,
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=2000000,
         opex=2000000 * 0.05,
         variable_cost=0,
@@ -929,13 +945,11 @@ class TidalStreamTurbineModel(GenerationModel):
                     self.power_out[dn * 24 + hr] += (
                         f * P[p2] + (1 - f) * P[p1]
                     ) * self.n_turbine[si]
-                    # self.n_good_points[dn* 24 + hr] += 1
-                    # I believe this should be =1 not +=1 (Matt)
                     self.n_good_points[dn * 24 + hr] = 1
         # the power values have been generated for each point. However, points with missing data are
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
-        # currently installed capacity: the values should not
+        # currently installed capacity: the values should not change
         self.scale_output(self.total_installed_capacity)
 
 
@@ -951,7 +965,7 @@ class OffshoreWindModel(GenerationModel):
         cost_param_entry="Offshore Wind",
         technical_params_file="params/Offshore_wind_params.xlsx",
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=None,
         opex=None,
         variable_cost=None,
@@ -1099,32 +1113,8 @@ class OffshoreWindModel(GenerationModel):
         stepstartime = time.time()
         if self.data_path == "":
             raise Exception("model can not be run without a data path")
-        if self.sites[0] == "all":
-            sites = []
-            with open(self.data_path + "site_locs.csv", "r") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    sites.append(int(row[0]))
-            self.sites = sites
-
-        elif self.sites[:2] == "lf":
-            sites = []
-            lwst = str(sites[2:])
-            locs = []
-            with open(self.save_path + "s_load_factors.csv", "r") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    if float(row[2]) * 100 > lwst:
-                        locs.append([row[0] + row[1]])
-            with open(self.data_path + "site_locs.csv", "r") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    if row[1] + row[2] in locs:
-                        sites.apend(int(row[0]))
-            self.sites = sites
+        if type(self.sites[0]) != int:
+            raise Exception("The sites must be a list of integers")
 
         # If no values given assume an equl distribution of turbines over sites
         if self.n_turbine is None:
@@ -1226,7 +1216,7 @@ class OffshoreWindModel(GenerationModel):
                 rangeselectorindex : self.loadindex + len(self.n_good_points)
             ]
 
-            # the approach hass been changed to vectorise the calculation of power output
+            # the approach has been changed to vectorise the calculation of power output
             # this is done by loading all the wind speeds into an array and then calculating
             # the power output for each point in the array. This is much faster than the previous
             # approach of calculating each point individually
@@ -1261,7 +1251,7 @@ class OffshoreWindModel(GenerationModel):
         # the power values have been generated for each point. However, points with missing data are
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
-        # currently installed capacity: the values should not
+        # currently installed capacity: the values should not change
         self.speeds = site_speeds
         self.power_out = self.power_out_array.tolist()
         self.scale_output(self.total_installed_capacity)
@@ -1277,7 +1267,7 @@ class SolarModel(GenerationModel):
         cost_params_file="params/SCORES Cost assumptions.xlsx",
         cost_param_entry="Large-scale Solar",
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=None,
         opex=None,
         variable_cost=None,
@@ -1670,7 +1660,6 @@ class SolarModel(GenerationModel):
 
 
 class OnshoreWindModel(GenerationModel):
-    # need to adjust the cost!
 
     def __init__(
         self,
@@ -1683,7 +1672,7 @@ class OnshoreWindModel(GenerationModel):
         cost_param_entry="Onshore Wind",
         technical_params_file="params/Offshore_wind_params.xlsx",
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=None,
         opex=None,
         variable_cost=None,
@@ -1701,14 +1690,14 @@ class OnshoreWindModel(GenerationModel):
         save_path="stored_model_runs/",
         save=True,
         data_height=100,
-        alpha=0.143,  # this row added by CQ to calculate wind shear
+        alpha=0.143,
         power_curve=None,
         year_online=None,
         month_online=None,
         force_run=False,
         limits=[0, 1000000],
         scaling_factor=1,
-    ):  # this added by CQ so that a power curve can optionally be imported
+    ):
         """
         == description ==
         Initialises an OnshoreWindModel object. Searches for a saved result at
@@ -1834,34 +1823,8 @@ class OnshoreWindModel(GenerationModel):
 
         if self.data_path == "":
             raise Exception("model can not be run without a data path")
-        if self.sites[0] == "all":
-            sites = []
-            with open(self.data_path + "site_locs.csv", "r") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    sites.append(int(row[0]))
-            self.sites = sites
-
-        elif self.sites[:2] == "lf":
-            sites = []
-            lwst = str(sites[2:])
-            locs = []
-            with open(
-                self.save_path + "w" + str(self.turbine_size) + "_load_factors.csv", "r"
-            ) as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    if float(row[2]) * 100 > lwst:
-                        locs.append([row[0] + row[1]])
-            with open(self.data_path + "site_locs.csv", "r") as csvfile:
-                reader = csv.reader(csvfile)
-                next(reader)
-                for row in reader:
-                    if row[1] + row[2] in locs:
-                        sites.apend(int(row[0]))
-            self.sites = sites
+        if type(self.sites[0]) != int:
+            raise Exception("The sites must be a list of integers")
 
         if self.n_turbine is None:
             self.n_turbine = [1] * len(self.sites)
@@ -1873,11 +1836,9 @@ class OnshoreWindModel(GenerationModel):
         # create the power curve at intervals of 0.1
         v = np.arange(0, self.v_cut_out, 0.1)  # wind speeds (m/s)
 
-        # CQ added two power_curve options: either calculate, or import
         if self.power_curve is None:
             P = [0.0] * len(v)  # power output (MW)
 
-            # the following is a CQ edit - new Cp calculation
             Cp = (
                 self.turbine_size
                 * 1e6
@@ -1975,7 +1936,7 @@ class OnshoreWindModel(GenerationModel):
         # the power values have been generated for each point. However, points with missing data are
         # still zero. The power scaled values, which are initalised at zero. Running self.scale_ouput sorts
         # this out. As we dont want to increase the capacity at this point, we just run scale_output with the
-        # currently installed capacity: the values should not
+        # currently installed capacity: the values should not change
         self.speeds = site_speeds
         self.power_out = self.power_out_array.tolist()
         self.scale_output(self.total_installed_capacity)
