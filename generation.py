@@ -24,7 +24,7 @@ class GenerationModel:
         data_path="",
         cost_params_file=None,
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=None,
         opex=None,
         variable_cost=None,
@@ -75,7 +75,7 @@ class GenerationModel:
             # Read in cost parameters
             cost_params = pd.read_excel(cost_params_file, sheet_name=cost_sensitivity)
             cost_params = cost_params.set_index(["Technology", "Year"])
-            datarow = cost_params.loc[[cost_param_entry, cost_year]]
+            datarow = cost_params.loc[cost_param_entry, cost_year]
 
             loadedcapex = datarow["Capex-£/kW"] * 1000
             loadedopex = datarow["Fixed Opex-£/MW/year"]
@@ -332,7 +332,7 @@ class DispatchableGenerator(GenerationModel):
         cost_params_file="params/SCORES Cost assumptions.xlsx",
         cost_param_entry="CCGT H Class",
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=None,
         opex=None,
         variable_opex=None,
@@ -436,7 +436,7 @@ class Interconnector(GenerationModel):
         cost_params_file=None,
         cost_param_entry=None,
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=4000000,
         opex=50000,
         gentype="Interconnector",
@@ -558,7 +558,7 @@ class NuclearModel(GenerationModel):
         cost_params_file=None,
         cost_param_entry=None,
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=4000000,
         opex=50000,
         variable_cost=2,
@@ -668,7 +668,7 @@ class GeothermalModel(GenerationModel):
         cost_params_file=None,
         cost_param_entry=None,
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=2000000,
         opex=2000000 * 0.05,
         variable_cost=0,
@@ -965,7 +965,7 @@ class OffshoreWindModel(GenerationModel):
         cost_param_entry="Offshore Wind",
         technical_params_file="params/Offshore_wind_params.xlsx",
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=None,
         opex=None,
         variable_cost=None,
@@ -1267,7 +1267,7 @@ class SolarModel(GenerationModel):
         cost_params_file="params/SCORES Cost assumptions.xlsx",
         cost_param_entry="Large-scale Solar",
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=None,
         opex=None,
         variable_cost=None,
@@ -1672,7 +1672,7 @@ class OnshoreWindModel(GenerationModel):
         cost_param_entry="Onshore Wind",
         technical_params_file="params/Offshore_wind_params.xlsx",
         cost_sensitivity="Medium",
-        cost_year="2025",
+        cost_year=2025,
         capex=None,
         opex=None,
         variable_cost=None,
